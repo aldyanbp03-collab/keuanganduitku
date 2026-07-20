@@ -3,6 +3,7 @@ import path from 'path';
 import fs from 'fs';
 import crypto from 'crypto';
 import admin from 'firebase-admin';
+import { getApps, initializeApp, getApp } from 'firebase-admin/app';
 import { getFirestore } from 'firebase-admin/firestore';
 import { createServer as createViteServer } from 'vite';
 import { GoogleGenAI, Type } from '@google/genai';
@@ -13,7 +14,9 @@ const PORT = 3000;
 let db: FirebaseFirestore.Firestore;
 
 class PersistentMockFirestore {
-  private filePath = path.join(process.cwd(), 'database-mock.json');
+  private filePath = process.env.VERCEL
+    ? path.join('/tmp', 'database-mock.json')
+    : path.join(process.cwd(), 'database-mock.json');
   private collections: Record<string, Record<string, any>> = {};
 
   constructor() {
@@ -97,6 +100,10 @@ class PersistentMockFirestore {
 }
 
 async function initializeFirebase() {
+  if (db) {
+    return;
+  }
+
   try {
     const configPath = path.join(process.cwd(), 'firebase-applet-config.json');
     let projectId = 'gen-lang-client-0053714344';
@@ -112,10 +119,15 @@ async function initializeFirebase() {
       }
     }
 
-    // Initialize Admin
-    const app = admin.initializeApp({
-      projectId: projectId,
-    });
+    // Initialize Admin if not already initialized
+    let app;
+    if (getApps().length === 0) {
+      app = initializeApp({
+        projectId: projectId,
+      });
+    } else {
+      app = getApp();
+    }
 
     // Use getFirestore with custom databaseId
     const tempDb = getFirestore(app, databaseId);
@@ -229,14 +241,31 @@ async function purgeDemoData() {
   }
 }
 
-async function main() {
+const app = express();
+app.use(express.json());
+
+let initialized = false;
+let initPromise: Promise<void> | null = null;
+
+async function doInitialization() {
   await initializeFirebase();
   await purgeDemoData();
-  const app = express();
-  app.use(express.json());
+}
 
-  // Middleware Auth Checker
-  const requireAuth = async (req: express.Request, res: express.Response, next: express.NextFunction) => {
+app.use(async (req, res, next) => {
+  if (!initialized) {
+    if (!initPromise) {
+      initPromise = doInitialization().then(() => {
+        initialized = true;
+      });
+    }
+    await initPromise;
+  }
+  next();
+});
+
+// Middleware Auth Checker
+const requireAuth = async (req: express.Request, res: express.Response, next: express.NextFunction) => {
     const authHeader = req.headers.authorization;
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
       return res.status(401).json({ error: 'Sesi kedaluwarsa atau tidak valid. Silakan masuk kembali.' });
@@ -958,8 +987,9 @@ async function main() {
   });
 
 
+async function setupViteAndListen() {
   // Serve frontend files
-  if (process.env.NODE_ENV !== 'production') {
+  if (process.env.NODE_ENV !== 'production' && !process.env.VERCEL) {
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: 'spa',
@@ -973,11 +1003,15 @@ async function main() {
     });
   }
 
-  app.listen(PORT, '0.0.0.0', () => {
-    console.log(`Server running on http://localhost:${PORT}`);
-  });
+  if (!process.env.VERCEL) {
+    app.listen(PORT, '0.0.0.0', () => {
+      console.log(`Server running on http://localhost:${PORT}`);
+    });
+  }
 }
 
-main().catch((err) => {
-  console.error('Fatal error starting express server:', err);
+setupViteAndListen().catch((err) => {
+  console.error('Failed to initialize server or setup Vite:', err);
 });
+
+export default app;
