@@ -449,40 +449,56 @@ export default function DashboardTab({
             <p className="text-[11px] text-slate-500 mb-4">Kemajuan akumulasi tabungan masa depan keluarga.</p>
 
             <div className="space-y-4">
-              {savingGoals.slice(0, 3).map((goal) => {
-                const goalPercentage = (goal.currentAmount / goal.targetAmount) * 100;
-                return (
-                  <div key={goal.id} className="p-3 bg-slate-50/60 border border-slate-100 rounded-xl space-y-2">
-                    <div className="flex items-center justify-between text-xs">
-                      <span className="font-semibold text-slate-700">{goal.title}</span>
-                      <span className="font-bold text-emerald-600">{Math.round(goalPercentage)}%</span>
+              {savingGoals.length === 0 ? (
+                <div className="text-center py-8 px-4 border border-dashed border-slate-200 rounded-xl bg-slate-50/50">
+                  <p className="text-xs text-slate-400 font-medium">Belum ada target tabungan aktif.</p>
+                  <p className="text-[10px] text-slate-400 mt-1">Tambahkan target baru di tab Tabungan.</p>
+                </div>
+              ) : (
+                savingGoals.slice(0, 3).map((goal) => {
+                  const goalPercentage = (goal.currentAmount / goal.targetAmount) * 100;
+                  return (
+                    <div key={goal.id} className="p-3 bg-slate-50/60 border border-slate-100 rounded-xl space-y-2">
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="font-semibold text-slate-700">{goal.title}</span>
+                        <span className="font-bold text-emerald-600">{Math.round(goalPercentage)}%</span>
+                      </div>
+                      <div className="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden">
+                        <div 
+                          className="bg-emerald-500 h-full rounded-full" 
+                          style={{ width: `${goalPercentage}%` }}
+                        />
+                      </div>
+                      <div className="flex justify-between items-center text-[10px] text-slate-400 font-mono">
+                        <span>{formatIDR(goal.currentAmount)}</span>
+                        <span>Target: {formatIDR(goal.targetAmount)}</span>
+                      </div>
                     </div>
-                    <div className="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden">
-                      <div 
-                        className="bg-emerald-500 h-full rounded-full" 
-                        style={{ width: `${goalPercentage}%` }}
-                      />
-                    </div>
-                    <div className="flex justify-between items-center text-[10px] text-slate-400 font-mono">
-                      <span>{formatIDR(goal.currentAmount)}</span>
-                      <span>Target: {formatIDR(goal.targetAmount)}</span>
-                    </div>
-                  </div>
-                );
-              })}
+                  );
+                })
+              )}
             </div>
           </div>
 
-          <div className="mt-5 bg-gradient-to-br from-indigo-900 to-indigo-950 text-white rounded-xl p-4 flex items-center justify-between shadow-md border border-indigo-950">
-            <div>
-              <span className="text-[10px] text-indigo-300 font-bold uppercase tracking-wider block">Sasaran Impian Terdekat</span>
-              <h4 className="font-display font-bold text-sm mt-1">{savingGoals[1]?.title || 'Liburan Bali'}</h4>
-              <p className="text-[11px] text-indigo-200 mt-0.5">Butuh {formatIDR((savingGoals[1]?.targetAmount || 0) - (savingGoals[1]?.currentAmount || 0))} lagi sebelum {savingGoals[1]?.deadline || 'Agustus 2026'}.</p>
+          {savingGoals.length > 0 ? (
+            <div className="mt-5 bg-gradient-to-br from-indigo-900 to-indigo-950 text-white rounded-xl p-4 flex items-center justify-between shadow-md border border-indigo-950">
+              <div>
+                <span className="text-[10px] text-indigo-300 font-bold uppercase tracking-wider block">Sasaran Impian Terdekat</span>
+                <h4 className="font-display font-bold text-sm mt-1">{savingGoals[0]?.title}</h4>
+                <p className="text-[11px] text-indigo-200 mt-0.5">Butuh {formatIDR(Math.max(0, (savingGoals[0]?.targetAmount || 0) - (savingGoals[0]?.currentAmount || 0)))} lagi sebelum {savingGoals[0]?.deadline || 'Agustus 2026'}.</p>
+              </div>
+              <div className="p-2.5 bg-white/10 text-indigo-200 rounded-xl border border-white/10">
+                <TrendingUp className="w-5 h-5 animate-bounce" />
+              </div>
             </div>
-            <div className="p-2.5 bg-white/10 text-indigo-200 rounded-xl border border-white/10">
-              <TrendingUp className="w-5 h-5 animate-bounce" />
+          ) : (
+            <div className="mt-5 bg-slate-50 border border-slate-200/60 rounded-xl p-4 flex items-center justify-between text-slate-500">
+              <div>
+                <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">Sasaran Impian Terdekat</span>
+                <p className="text-[11px] text-slate-400 mt-1">Belum ada target tabungan yang dikonfigurasi.</p>
+              </div>
             </div>
-          </div>
+          )}
         </div>
 
       </div>

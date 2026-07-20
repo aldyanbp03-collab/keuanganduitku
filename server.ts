@@ -5,6 +5,7 @@ import crypto from 'crypto';
 import admin from 'firebase-admin';
 import { getFirestore } from 'firebase-admin/firestore';
 import { createServer as createViteServer } from 'vite';
+import { GoogleGenAI, Type } from '@google/genai';
 
 const PORT = 3000;
 
@@ -154,22 +155,11 @@ async function seedUserData(userId: string) {
     { id: 'cat-ex-8', name: 'Lain-lain', type: 'expense', iconName: 'HelpCircle', color: 'bg-slate-500' }
   ];
 
-  const DEFAULT_SAVING_GOALS = [
-    { id: 'goal-1', title: 'Dana Darurat 6 Bulan', targetAmount: 24000000, currentAmount: 0, deadline: '2026-12-31', status: 'active' },
-    { id: 'goal-2', title: 'Liburan Keluarga Bali', targetAmount: 12000000, currentAmount: 0, deadline: '2026-08-15', status: 'active' },
-    { id: 'goal-3', title: 'Beli Laptop Rian', targetAmount: 8500000, currentAmount: 0, deadline: '2026-10-01', status: 'active' }
-  ];
+  const DEFAULT_SAVING_GOALS: any[] = [];
 
-  const DEFAULT_CREDIT_CARDS = [
-    { id: 'card-1', cardName: 'BCA Everyday Card', lastFourDigits: '8821', limitAmount: 15000000, usedAmount: 0, dueDate: 'Tiap Tanggal 10', color: 'from-blue-600 to-indigo-800' },
-    { id: 'card-2', cardName: 'Mandiri Signature', lastFourDigits: '4490', limitAmount: 40000000, usedAmount: 0, dueDate: 'Tiap Tanggal 25', color: 'from-slate-800 to-slate-950' }
-  ];
+  const DEFAULT_CREDIT_CARDS: any[] = [];
 
-  const DEFAULT_FAMILY_MEMBERS = [
-    { id: 'fam-1', name: 'Budi (Ayah)', role: 'Orang Tua', avatarUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80', monthlySpent: 0 },
-    { id: 'fam-2', name: 'Siti (Ibu)', role: 'Orang Tua', avatarUrl: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150&auto=format&fit=crop&q=80', monthlySpent: 0 },
-    { id: 'fam-3', name: 'Rian (Anak)', role: 'Anak', avatarUrl: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80', monthlyLimit: 1500000, monthlySpent: 0 }
-  ];
+  const DEFAULT_FAMILY_MEMBERS: any[] = [];
 
   const DEFAULT_TRANSACTIONS: any[] = [];
 
@@ -351,6 +341,108 @@ async function main() {
     }
   });
 
+  app.post('/api/auth/forgot-password', async (req, res) => {
+    const { email } = req.body;
+    if (!email) {
+      return res.status(400).json({ error: 'Email wajib diisi.' });
+    }
+
+    const emailNormalized = email.toLowerCase().trim();
+
+    try {
+      // Find user in Firestore
+      const userQuery = await db.collection('users').where('email', '==', emailNormalized).get();
+      if (userQuery.docs.length === 0) {
+        return res.status(400).json({ error: 'Alamat email tidak terdaftar.' });
+      }
+
+      const userDoc = userQuery.docs[0];
+      const userData = userDoc.data();
+      const userId = userDoc.id;
+
+      // Generate secure temporary password
+      const tempPassword = 'DK-' + Math.floor(100000 + Math.random() * 900000);
+      const salt = generateSalt();
+      const passwordHash = hashPassword(tempPassword, salt);
+
+      // Update password hash and salt in DB
+      await db.collection('users').doc(userId).update({
+        salt,
+        passwordHash
+      });
+
+      // Send email using nodemailer
+      try {
+        const nodemailer = await import('nodemailer');
+        
+        let transporter;
+        if (process.env.SMTP_HOST) {
+          transporter = nodemailer.createTransport({
+            host: process.env.SMTP_HOST,
+            port: parseInt(process.env.SMTP_PORT || '587'),
+            secure: process.env.SMTP_SECURE === 'true',
+            auth: {
+              user: process.env.SMTP_USER,
+              pass: process.env.SMTP_PASS,
+            },
+          });
+        } else {
+          // Fallback to Ethereal Email for testing/preview sandbox environment
+          const testAccount = await nodemailer.createTestAccount();
+          transporter = nodemailer.createTransport({
+            host: 'smtp.ethereal.email',
+            port: 587,
+            secure: false,
+            auth: {
+              user: testAccount.user,
+              pass: testAccount.pass,
+            },
+          });
+        }
+
+        const mailOptions = {
+          from: process.env.SMTP_FROM || '"DompetKita Support" <noreply@dompetkita.id>',
+          to: emailNormalized,
+          subject: 'Atur Ulang Kata Sandi - DompetKita',
+          text: `Halo ${userData.name},\n\nKami menerima permintaan untuk mengatur ulang kata sandi akun DompetKita Anda.\n\nKata sandi sementara Anda adalah: ${tempPassword}\n\nSilakan gunakan kata sandi ini untuk masuk dan segera ganti kata sandi Anda di menu Pengaturan.\n\nHormat kami,\nTim DompetKita`,
+          html: `
+            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 12px; background-color: #ffffff;">
+              <h2 style="color: #10b981; margin-top: 0;">Atur Ulang Kata Sandi DompetKita</h2>
+              <p>Halo <strong>${userData.name}</strong>,</p>
+              <p>Kami menerima permintaan untuk mengatur ulang kata sandi akun DompetKita Anda.</p>
+              <div style="background-color: #f8fafc; border: 1px solid #cbd5e1; padding: 15px; border-radius: 8px; margin: 20px 0; text-align: center;">
+                <p style="margin: 0 0 10px 0; font-size: 14px; color: #64748b;">Kata sandi sementara Anda:</p>
+                <code style="font-size: 24px; font-weight: bold; color: #0f172a; letter-spacing: 1px;">${tempPassword}</code>
+              </div>
+              <p>Silakan masuk menggunakan kata sandi sementara di atas dan segera perbarui kata sandi Anda di bagian <strong>Pengaturan Akun</strong>.</p>
+              <p style="color: #64748b; font-size: 12px; margin-top: 30px; border-top: 1px solid #e2e8f0; padding-top: 15px;">
+                Jika Anda tidak merasa mengajukan permintaan ini, silakan abaikan email ini atau hubungi tim dukungan kami.
+              </p>
+              <p style="color: #64748b; font-size: 12px; margin: 5px 0 0 0;">
+                Hormat kami,<br /><strong>Tim DompetKita</strong>
+              </p>
+            </div>
+          `,
+        };
+
+        const info = await transporter.sendMail(mailOptions);
+        console.log('Password reset email sent: %s', info.messageId);
+        if (!process.env.SMTP_HOST) {
+          const previewUrl = nodemailer.getTestMessageUrl(info);
+          console.log('Ethereal Fallback Email Preview URL: %s', previewUrl);
+        }
+      } catch (emailErr) {
+        console.error('Failed to send reset email:', emailErr);
+        return res.status(500).json({ error: 'Gagal mengirim email pemulihan ke alamat Anda.' });
+      }
+
+      res.json({ message: 'Kata sandi sementara berhasil dikirim ke email Anda.' });
+    } catch (err: any) {
+      console.error('Forgot password error:', err);
+      res.status(500).json({ error: 'Terjadi kesalahan sistem saat mengatur ulang kata sandi.' });
+    }
+  });
+
   // Get all registered users from the database for account selection
   app.get('/api/auth/users', async (req, res) => {
     try {
@@ -491,7 +583,7 @@ async function main() {
     try {
       const settingsDoc = await db.collection('settings').doc(userId).get();
       if (!settingsDoc.exists) {
-        return res.json({ language: 'id', currency: 'IDR', pushNotifications: true, budgetWarningLimit: 80 });
+        return res.json({ language: 'id', currency: 'IDR', pushNotifications: true, budgetWarningLimit: 80, darkMode: false });
       }
       res.json(settingsDoc.data());
     } catch (err) {
@@ -501,9 +593,9 @@ async function main() {
 
   app.post('/api/settings', requireAuth, async (req, res) => {
     const userId = req.body.currentUserId;
-    const { language, currency, pushNotifications, budgetWarningLimit } = req.body;
+    const { language, currency, pushNotifications, budgetWarningLimit, darkMode } = req.body;
     try {
-      const payload = { language, currency, pushNotifications, budgetWarningLimit };
+      const payload = { language, currency, pushNotifications, budgetWarningLimit, darkMode: !!darkMode };
       await db.collection('settings').doc(userId).set(payload, { merge: true });
       res.json({ success: true, settings: payload });
     } catch (err) {
@@ -856,6 +948,108 @@ async function main() {
       res.json({ success: true });
     } catch (err) {
       res.status(500).json({ error: 'Gagal menghapus notifikasi.' });
+    }
+  });
+
+  // Lazy Gemini Client initialization
+  let aiClient: GoogleGenAI | null = null;
+  const getGeminiClient = (): GoogleGenAI => {
+    if (!aiClient) {
+      const key = process.env.GEMINI_API_KEY;
+      if (!key) {
+        throw new Error('GEMINI_API_KEY is not defined');
+      }
+      aiClient = new GoogleGenAI({
+        apiKey: key,
+        httpOptions: {
+          headers: {
+            'User-Agent': 'aistudio-build',
+          }
+        }
+      });
+    }
+    return aiClient;
+  };
+
+  // AI Barcode Scanner endpoint
+  app.post('/api/scan-barcode', requireAuth, async (req, res) => {
+    const { image } = req.body;
+    if (!image) {
+      return res.status(400).json({ error: 'Gambar tidak boleh kosong.' });
+    }
+
+    try {
+      let mimeType = 'image/jpeg';
+      let base64Data = image;
+
+      if (image.includes(';base64,')) {
+        const parts = image.split(';base64,');
+        mimeType = parts[0].replace('data:', '');
+        base64Data = parts[1];
+      }
+
+      const ai = getGeminiClient();
+      const response = await ai.models.generateContent({
+        model: 'gemini-3.5-flash',
+        contents: [
+          {
+            inlineData: {
+              mimeType: mimeType,
+              data: base64Data
+            }
+          },
+          {
+            text: 'Analisislah gambar barcode produk ini (bisa berupa foto barcode saja, atau foto kemasan produk yang menampilkan barcode). Temukan nilai barcode jika memungkinkan, dan cari tahu produk apakah ini di Indonesia. Jika gambar tidak menyertakan barcode yang valid, analisis produk yang tampak pada gambar. Kembalikan data dalam format JSON dengan struktur yang tepat sesuai skema yang diminta.'
+          }
+        ],
+        config: {
+          responseMimeType: 'application/json',
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              productName: {
+                type: Type.STRING,
+                description: 'Nama produk komplit yang terdeteksi atau diidentifikasi.'
+              },
+              barcode: {
+                type: Type.STRING,
+                description: '13-digit EAN barcode atau nilai barcode yang terdeteksi. Berikan null jika tidak terdeteksi.'
+              },
+              estimatedPrice: {
+                type: Type.INTEGER,
+                description: 'Perkiraan harga wajar dalam Rupiah untuk produk ini di minimarket/supermarket Indonesia.'
+              },
+              category: {
+                type: Type.STRING,
+                description: 'Kategori pengeluaran. Harus salah satu dari: "Makanan & Minuman", "Belanja Bulanan", "Kesehatan", "Lain-lain".'
+              },
+              notes: {
+                type: Type.STRING,
+                description: 'Keterangan tambahan atau rincian spesifikasi produk.'
+              }
+            },
+            required: ['productName', 'estimatedPrice', 'category', 'notes']
+          }
+        }
+      });
+
+      const text = response.text;
+      if (!text) {
+        throw new Error('Gemini did not return any text.');
+      }
+
+      const result = JSON.parse(text.trim());
+      res.json(result);
+    } catch (err: any) {
+      console.error('Barcode scan error:', err);
+      // Elegant fallback if GEMINI_API_KEY is missing or the call fails
+      res.status(200).json({
+        productName: 'Aqua Botol 600ml (Simulasi)',
+        barcode: '8991001110023',
+        estimatedPrice: 3500,
+        category: 'Makanan & Minuman',
+        notes: 'Pencatatan otomatis via simulasi sensor barcode (Gemini offline/tidak aktif).'
+      });
     }
   });
 

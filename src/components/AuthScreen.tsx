@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { motion } from 'motion/react';
 import { Wallet, ShieldCheck, Mail, Lock, User, ArrowRight } from 'lucide-react';
 
@@ -22,52 +22,6 @@ export default function AuthScreen({ onLoginSuccess }: AuthScreenProps) {
   const [customError, setCustomError] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
   const [loading, setLoading] = useState(false);
-
-  // States for database-registered accounts
-  const [dbUsers, setDbUsers] = useState<{ id: string; name: string; email: string; avatarUrl: string }[]>([]);
-  const [fetchingUsers, setFetchingUsers] = useState(false);
-
-  const fetchDbUsers = async () => {
-    setFetchingUsers(true);
-    try {
-      const res = await fetch('/api/auth/users');
-      if (res.ok) {
-        const data = await res.json();
-        setDbUsers(data);
-      }
-    } catch (e) {
-      console.error('Failed to fetch database users:', e);
-    } finally {
-      setFetchingUsers(false);
-    }
-  };
-
-  useEffect(() => {
-    if (authMode === 'login') {
-      fetchDbUsers();
-    }
-  }, [authMode]);
-
-  const handleSelectAccountLogin = async (userId: string) => {
-    setLoading(true);
-    setCustomError('');
-    try {
-      const response = await fetch('/api/auth/login-by-id', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId })
-      });
-      const data = await response.json();
-      if (!response.ok) {
-        throw new Error(data.error || 'Gagal masuk dengan pilihan akun.');
-      }
-      onLoginSuccess(data.user, data.token);
-    } catch (err: any) {
-      setCustomError(err.message || 'Gagal masuk dengan pilihan akun.');
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const handleFormSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -130,7 +84,23 @@ export default function AuthScreen({ onLoginSuccess }: AuthScreenProps) {
         setCustomError('Silakan masukkan email Anda.');
         return;
       }
-      setSuccessMsg('Tautan pemulihan kata sandi telah dikirim ke email Anda.');
+      setLoading(true);
+      try {
+        const response = await fetch('/api/auth/forgot-password', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email })
+        });
+        const data = await response.json();
+        if (!response.ok) {
+          throw new Error(data.error || 'Gagal mengirim email pemulihan.');
+        }
+        setSuccessMsg(data.message || 'Kata sandi sementara telah berhasil dikirim ke email Anda.');
+      } catch (err: any) {
+        setCustomError(err.message || 'Gagal mengirim email pemulihan.');
+      } finally {
+        setLoading(false);
+      }
     }
   };
 
@@ -164,8 +134,8 @@ export default function AuthScreen({ onLoginSuccess }: AuthScreenProps) {
         >
           {authMode === 'login' && (
             <>
-              <h2 className="font-display font-bold text-xl text-white mb-1">Pilih Akun & Masuk Langsung</h2>
-              <p className="text-slate-400 text-xs mb-6">Silakan pilih salah satu akun dari database untuk masuk secara instan.</p>
+              <h2 className="font-display font-bold text-xl text-white mb-1">Masuk ke Akun Anda</h2>
+              <p className="text-slate-400 text-xs mb-6">Silakan masukkan email dan kata sandi Anda untuk mengakses dompet.</p>
 
               {customError && (
                 <div className="mb-4 p-3 bg-red-950/40 border border-red-900/60 text-red-300 text-xs rounded-xl flex items-center gap-2">
@@ -181,52 +151,7 @@ export default function AuthScreen({ onLoginSuccess }: AuthScreenProps) {
                 </div>
               )}
 
-              {/* LIST OF DATABASE ACCOUNTS */}
-              <div className="mb-6">
-                {fetchingUsers ? (
-                  <div className="flex justify-center py-4">
-                    <span className="text-xs text-slate-400 animate-pulse">Mengambil daftar akun dari database...</span>
-                  </div>
-                ) : dbUsers.length > 0 ? (
-                  <div className="grid grid-cols-2 gap-3 max-h-56 overflow-y-auto pr-1">
-                    {dbUsers.map((u) => (
-                      <button
-                        key={u.id}
-                        onClick={() => handleSelectAccountLogin(u.id)}
-                        className="flex items-center gap-3 p-3 bg-slate-900/60 border border-slate-700/50 rounded-xl hover:border-emerald-500 hover:bg-slate-900/90 transition text-left cursor-pointer group"
-                      >
-                        <img
-                          src={u.avatarUrl || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80'}
-                          alt={u.name}
-                          className="w-10 h-10 rounded-full border border-slate-700 group-hover:border-emerald-500 shadow-xs object-cover shrink-0"
-                        />
-                        <div className="min-w-0">
-                          <span className="text-xs font-bold text-slate-200 group-hover:text-white block truncate">
-                            {u.name}
-                          </span>
-                          <span className="text-[10px] text-slate-400 block truncate">
-                            {u.email}
-                          </span>
-                        </div>
-                      </button>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="p-4 bg-amber-950/30 border border-amber-900/40 rounded-xl text-amber-200 text-xs text-center space-y-2">
-                    <p className="font-semibold">⚠️ Belum ada akun di database.</p>
-                    <p className="text-slate-400">Silakan klik "Daftar Sekarang" di bawah untuk membuat akun baru pertama Anda!</p>
-                  </div>
-                )}
-              </div>
-
-              {/* Traditional Credentials Splitter */}
-              <div className="relative flex py-3 items-center">
-                <div className="flex-grow border-t border-slate-700/60"></div>
-                <span className="flex-shrink mx-3 text-slate-500 text-[10px] font-semibold uppercase tracking-wider">Atau Masuk manual</span>
-                <div className="flex-grow border-t border-slate-700/60"></div>
-              </div>
-
-              <form onSubmit={handleFormSubmit} className="space-y-4 mt-2">
+              <form onSubmit={handleFormSubmit} className="space-y-4">
                 <div>
                   <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2">Alamat Email</label>
                   <div className="relative">
@@ -409,9 +334,10 @@ export default function AuthScreen({ onLoginSuccess }: AuthScreenProps) {
 
                 <button
                   type="submit"
-                  className="w-full py-2.5 bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-bold text-sm rounded-xl transition-all shadow-md flex items-center justify-center gap-1.5 mt-2 cursor-pointer"
+                  disabled={loading}
+                  className="w-full py-2.5 bg-emerald-500 hover:bg-emerald-600 disabled:bg-emerald-800 text-slate-950 font-bold text-sm rounded-xl transition-all shadow-md flex items-center justify-center gap-1.5 mt-2 cursor-pointer"
                 >
-                  Kirim Tautan Atur Ulang <ArrowRight className="w-4 h-4" />
+                  {loading ? 'Mengirim...' : 'Kirim Tautan Atur Ulang'} <ArrowRight className="w-4 h-4" />
                 </button>
               </form>
 

@@ -22,6 +22,7 @@ import {
   Check, 
   ArrowRight, 
   Scan, 
+  Barcode,
   FileText, 
   Info,
   Menu
@@ -56,7 +57,7 @@ import SavingsTab from './components/SavingsTab';
 import CardsTab from './components/CardsTab';
 import ExpensesTab from './components/ExpensesTab';
 import SettingsTab from './components/SettingsTab';
-import OcrScanner from './components/OcrScanner';
+import BarcodeScanner from './components/BarcodeScanner';
 import EditTransactionModal from './components/EditTransactionModal';
 
 export default function App() {
@@ -101,7 +102,7 @@ export default function App() {
   const [expenseCategory, setExpenseCategory] = useState('');
   const [expenseSource, setExpenseSource] = useState('Cash');
   const [expenseNote, setExpenseNote] = useState('');
-  const [expenseInputMethod, setExpenseInputMethod] = useState<'manual' | 'ocr'>('manual');
+  const [expenseInputMethod, setExpenseInputMethod] = useState<'manual' | 'barcode'>('manual');
 
   // Income form state
   const [incomeTitle, setIncomeTitle] = useState('');
@@ -111,6 +112,15 @@ export default function App() {
   const [incomeNote, setIncomeNote] = useState('');
 
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
+  // Synchronize dark mode class on document element
+  useEffect(() => {
+    if (settings.darkMode) {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+    }
+  }, [settings.darkMode]);
 
   // Load all user data from DB when token changes
   useEffect(() => {
@@ -791,13 +801,39 @@ export default function App() {
     setWorkflowStep('completed');
   };
 
-  // --- OCR SCANNER FILL ---
-  const handleOcrScanComplete = (extracted: { title: string; amount: number; category: string; note: string }) => {
+  const handleBarcodeScanComplete = (extracted: { title: string; amount: number; category: string; note: string }) => {
     setExpenseTitle(extracted.title);
     setExpenseAmount(extracted.amount.toString());
     setExpenseCategory(extracted.category);
     setExpenseNote(extracted.note);
     setExpenseInputMethod('manual'); // Return to manual form tab once populated!
+  };
+
+  const handleInstantSaveExpense = (extracted: { title: string; amount: number; category: string; note: string; paymentSource: string }) => {
+    handleAddTransaction({
+      title: extracted.title,
+      amount: extracted.amount,
+      type: 'expense',
+      category: extracted.category,
+      date: new Date().toISOString().split('T')[0],
+      note: extracted.note,
+      paymentSource: extracted.paymentSource,
+      familyMemberId: user?.selectedMemberId,
+      relatedCreditCardId: extracted.paymentSource.startsWith('card-') ? extracted.paymentSource : undefined
+    });
+
+    // Reset fields & Close modal
+    setExpenseTitle('');
+    setExpenseAmount('');
+    setExpenseNote('');
+    setShowExpenseModal(false);
+
+    // Trigger Notification
+    triggerNotification(
+      'Pencatatan Instan Berhasil',
+      `Pengeluaran "${extracted.title}" sebesar ${formatIDR(extracted.amount)} berhasil dicatat langsung via Barcode AI ke database.`,
+      'success'
+    );
   };
 
   // Helper formatting currency
@@ -1222,23 +1258,29 @@ export default function App() {
               {/* Tab Selector inside Expense Modal: Manual vs AI Scanner */}
               <div className="px-5 pt-3 flex border-b border-slate-100 bg-slate-50/50">
                 <button
+                  type="button"
                   onClick={() => setExpenseInputMethod('manual')}
                   className={`px-4 py-2 text-xs font-semibold border-b-2 -mb-px transition-all ${expenseInputMethod === 'manual' ? 'border-rose-500 text-rose-600 font-bold' : 'border-transparent text-slate-400 hover:text-slate-700'}`}
                 >
                   Input Manual
                 </button>
                 <button
-                  onClick={() => setExpenseInputMethod('ocr')}
-                  className={`px-4 py-2 text-xs font-semibold border-b-2 -mb-px transition-all flex items-center gap-1.5 ${expenseInputMethod === 'ocr' ? 'border-rose-500 text-rose-600 font-bold' : 'border-transparent text-slate-400 hover:text-slate-700'}`}
+                  type="button"
+                  onClick={() => setExpenseInputMethod('barcode')}
+                  className={`px-4 py-2 text-xs font-semibold border-b-2 -mb-px transition-all flex items-center gap-1.5 ${expenseInputMethod === 'barcode' ? 'border-rose-500 text-rose-600 font-bold' : 'border-transparent text-slate-400 hover:text-slate-700'}`}
                 >
-                  <Scan className="w-3.5 h-3.5 animate-pulse" /> AI Scanner (OCR)
+                  <Barcode className="w-3.5 h-3.5 animate-pulse" /> Scan Barcode AI
                 </button>
               </div>
 
               {/* Render Selected Input Tab */}
               <div className="p-5 modal-form-scrollable">
-                {expenseInputMethod === 'ocr' ? (
-                  <OcrScanner onScanComplete={handleOcrScanComplete} />
+                {expenseInputMethod === 'barcode' ? (
+                  <BarcodeScanner 
+                    onScanComplete={handleBarcodeScanComplete} 
+                    onInstantSave={handleInstantSaveExpense}
+                    creditCards={creditCards}
+                  />
                 ) : (
                   <form onSubmit={handleSaveExpense} className="space-y-4">
                     <div>

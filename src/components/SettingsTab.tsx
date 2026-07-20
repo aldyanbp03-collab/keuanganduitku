@@ -19,7 +19,9 @@ import {
   Smartphone,
   Trash2,
   X,
-  ShieldAlert
+  ShieldAlert,
+  Moon,
+  Sun
 } from 'lucide-react';
 import { Category, AppSettings } from '../types';
 
@@ -182,6 +184,39 @@ export default function SettingsTab({
               />
               <span className="text-xs font-bold text-slate-800 font-mono bg-slate-100 px-2 py-1 rounded-md">{settings.budgetWarningLimit}%</span>
             </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Tema & Tampilan Section */}
+      <div className="bg-white border border-slate-200/80 rounded-2xl p-5 shadow-xs space-y-5">
+        <div className="flex items-center gap-2 border-b border-slate-100 pb-3">
+          <div className="p-2 bg-slate-100 text-slate-800 border border-slate-500/10 rounded-xl">
+            {settings.darkMode ? <Moon className="w-4.5 h-4.5" /> : <Sun className="w-4.5 h-4.5" />}
+          </div>
+          <div>
+            <h3 className="font-display font-bold text-slate-800 text-sm">Tema & Tampilan</h3>
+            <p className="text-[11px] text-slate-500">Sesuaikan tampilan aplikasi agar nyaman di mata.</p>
+          </div>
+        </div>
+
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <span className="text-xs font-semibold text-slate-800 block">Mode Gelap (Dark Mode)</span>
+              <span className="text-[11px] text-slate-400">Gunakan latar belakang gelap untuk hemat baterai dan kenyamanan mata.</span>
+            </div>
+            <button
+              onClick={() => {
+                onUpdateSettings({
+                  ...settings,
+                  darkMode: !settings.darkMode
+                });
+              }}
+              className={`w-11 h-6 rounded-full transition-all duration-300 relative border cursor-pointer ${settings.darkMode ? 'bg-emerald-500 border-emerald-500' : 'bg-slate-200 border-slate-300'}`}
+            >
+              <span className={`w-4.5 h-4.5 rounded-full bg-white shadow-xs absolute top-0.5 transition-all duration-300 ${settings.darkMode ? 'right-0.5' : 'left-0.5'}`} />
+            </button>
           </div>
         </div>
       </div>

@@ -1,6 +1,6 @@
 {
   "name": "DompetKita",
   "description": "Aplikasi pengelolaan keuangan pribadi dan keluarga untuk mencatat pemasukan, pengeluaran, tabungan, dan kartu kredit secara real-time.",
-  "requestFramePermissions": [],
+  "requestFramePermissions": ["camera"],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

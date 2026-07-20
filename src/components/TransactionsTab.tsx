@@ -37,6 +37,8 @@ export default function TransactionsTab({
   const [searchQuery, setSearchQuery] = useState('');
   const [filterType, setFilterType] = useState<'all' | 'income' | 'expense'>('all');
   const [filterCategory, setFilterCategory] = useState<string>('all');
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
   const [sortBy, setSortBy] = useState<'date-desc' | 'date-asc' | 'amount-desc' | 'amount-asc'>('date-desc');
   const [showExportSuccess, setShowExportSuccess] = useState(false);
   const [showFilters, setShowFilters] = useState(false); // Collapsible filters to save space
@@ -47,8 +49,10 @@ export default function TransactionsTab({
                           (tx.note && tx.note.toLowerCase().includes(searchQuery.toLowerCase()));
     const matchesType = filterType === 'all' ? true : tx.type === filterType;
     const matchesCategory = filterCategory === 'all' ? true : tx.category === filterCategory;
+    const matchesStartDate = startDate ? tx.date >= startDate : true;
+    const matchesEndDate = endDate ? tx.date <= endDate : true;
 
-    return matchesSearch && matchesType && matchesCategory;
+    return matchesSearch && matchesType && matchesCategory && matchesStartDate && matchesEndDate;
   });
 
   // Sort transactions
@@ -126,25 +130,25 @@ export default function TransactionsTab({
       </div>
 
       {/* FILTER PANEL AND SEARCH */}
-      <div className="bg-white border border-slate-200/60 rounded-2xl p-4 shadow-2xs space-y-3">
+      <div className="bg-white border border-slate-200/60 rounded-xl p-3 sm:p-4 shadow-2xs space-y-2.5">
         
         {/* Row 1: Search and Filter Toggle */}
-        <div className="flex flex-col sm:flex-row gap-2.5">
+        <div className="flex flex-col sm:flex-row gap-2">
           <div className="relative flex-1">
-            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
             <input
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Cari transaksi berdasarkan nama atau catatan..."
-              className="w-full pl-10 pr-4 py-2.5 bg-slate-50/60 border border-slate-200 rounded-xl text-slate-800 text-xs sm:text-sm focus:border-indigo-500 focus:outline-hidden transition placeholder:text-slate-400"
+              placeholder="Cari transaksi..."
+              className="w-full pl-9 pr-3 py-1.5 sm:py-2 bg-slate-50/60 border border-slate-200 rounded-lg text-slate-800 text-xs focus:border-indigo-500 focus:outline-hidden transition placeholder:text-slate-400"
             />
           </div>
 
-          <div className="flex gap-2">
+          <div className="flex gap-2 w-full sm:w-auto">
             <button
               onClick={() => setShowFilters(!showFilters)}
-              className={`px-3.5 py-2.5 rounded-xl border text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
+              className={`flex-1 sm:flex-none justify-center px-3 py-1.5 sm:py-2 rounded-lg border text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
                 showFilters 
                   ? 'bg-indigo-50 border-indigo-200 text-indigo-700' 
                   : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
@@ -158,12 +162,12 @@ export default function TransactionsTab({
             <select
               value={sortBy}
               onChange={(e: any) => setSortBy(e.target.value)}
-              className="bg-white border border-slate-200 rounded-xl px-3 py-2 text-slate-600 text-xs font-bold focus:outline-hidden cursor-pointer"
+              className="flex-1 sm:flex-none bg-white border border-slate-200 rounded-lg px-3 py-1.5 sm:py-2 text-slate-600 text-xs font-bold focus:outline-hidden cursor-pointer"
             >
               <option value="date-desc">Terbaru</option>
               <option value="date-asc">Terlama</option>
-              <option value="amount-desc">Nominal Tertinggi</option>
-              <option value="amount-asc">Nominal Terendah</option>
+              <option value="amount-desc">Tertinggi</option>
+              <option value="amount-asc">Terendah</option>
             </select>
           </div>
         </div>
@@ -175,65 +179,91 @@ export default function TransactionsTab({
               initial={{ opacity: 0, height: 0 }}
               animate={{ opacity: 1, height: 'auto' }}
               exit={{ opacity: 0, height: 0 }}
-              className="overflow-hidden pt-3 border-t border-slate-100"
+              className="overflow-hidden pt-2.5 border-t border-slate-100"
             >
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pb-1">
-                
-                {/* Filter Type */}
-                <div>
-                  <span className="block text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Tipe Arus Kas</span>
-                  <div className="flex bg-slate-100/80 p-0.5 rounded-lg border border-slate-200/50">
-                    <button
-                      onClick={() => setFilterType('all')}
-                      className={`flex-1 py-1.5 text-[10px] font-bold rounded-md transition-all ${filterType === 'all' ? 'bg-white text-slate-900 shadow-2xs' : 'text-slate-500 hover:text-slate-900'}`}
-                    >
-                      Semua
-                    </button>
-                    <button
-                      onClick={() => setFilterType('income')}
-                      className={`flex-1 py-1.5 text-[10px] font-bold rounded-md transition-all ${filterType === 'income' ? 'bg-emerald-500 text-white' : 'text-slate-500 hover:text-slate-900'}`}
-                    >
-                      Masuk
-                    </button>
-                    <button
-                      onClick={() => setFilterType('expense')}
-                      className={`flex-1 py-1.5 text-[10px] font-bold rounded-md transition-all ${filterType === 'expense' ? 'bg-rose-500 text-white' : 'text-slate-500 hover:text-slate-900'}`}
-                    >
-                      Keluar
-                    </button>
+              <div className="space-y-3 pb-1">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
+                  
+                  {/* Filter Type */}
+                  <div>
+                    <span className="block text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1">Tipe Arus Kas</span>
+                    <div className="flex bg-slate-100/80 p-0.5 rounded-lg border border-slate-200/50">
+                      <button
+                        onClick={() => setFilterType('all')}
+                        className={`flex-1 py-1 text-[10px] font-bold rounded-md transition-all ${filterType === 'all' ? 'bg-white text-slate-900 shadow-2xs' : 'text-slate-500 hover:text-slate-900'}`}
+                      >
+                        Semua
+                      </button>
+                      <button
+                        onClick={() => setFilterType('income')}
+                        className={`flex-1 py-1 text-[10px] font-bold rounded-md transition-all ${filterType === 'income' ? 'bg-emerald-500 text-white' : 'text-slate-500 hover:text-slate-900'}`}
+                      >
+                        Masuk
+                      </button>
+                      <button
+                        onClick={() => setFilterType('expense')}
+                        className={`flex-1 py-1 text-[10px] font-bold rounded-md transition-all ${filterType === 'expense' ? 'bg-rose-500 text-white' : 'text-slate-500 hover:text-slate-900'}`}
+                      >
+                        Keluar
+                      </button>
+                    </div>
                   </div>
-                </div>
 
-                {/* Filter Category */}
-                <div>
-                  <span className="block text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Kategori</span>
-                  <select
-                    value={filterCategory}
-                    onChange={(e) => setFilterCategory(e.target.value)}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-1.5 text-slate-600 text-xs focus:outline-hidden transition"
-                  >
-                    <option value="all">Semua Kategori</option>
-                    {categories.map((c) => (
-                      <option key={c.id} value={c.name}>{c.name}</option>
-                    ))}
-                  </select>
+                  {/* Filter Category */}
+                  <div>
+                    <span className="block text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1">Kategori</span>
+                    <select
+                      value={filterCategory}
+                      onChange={(e) => setFilterCategory(e.target.value)}
+                      className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1 text-slate-600 text-xs focus:outline-hidden transition cursor-pointer"
+                    >
+                      <option value="all">Semua Kategori</option>
+                      {categories.map((c) => (
+                        <option key={c.id} value={c.name}>{c.name}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* Tanggal Mulai */}
+                  <div>
+                    <span className="block text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1">Tanggal Mulai</span>
+                    <input
+                      type="date"
+                      value={startDate}
+                      onChange={(e) => setStartDate(e.target.value)}
+                      className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-slate-600 text-xs focus:outline-hidden focus:border-indigo-500 transition cursor-pointer"
+                    />
+                  </div>
+
+                  {/* Tanggal Selesai */}
+                  <div>
+                    <span className="block text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1">Tanggal Selesai</span>
+                    <input
+                      type="date"
+                      value={endDate}
+                      onChange={(e) => setEndDate(e.target.value)}
+                      className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-slate-600 text-xs focus:outline-hidden focus:border-indigo-500 transition cursor-pointer"
+                    />
+                  </div>
+
                 </div>
 
                 {/* Reset Filters button */}
-                <div className="flex items-end">
+                <div className="pt-2 border-t border-slate-100 flex justify-end">
                   <button
                     onClick={() => {
                       setSearchQuery('');
                       setFilterType('all');
                       setFilterCategory('all');
+                      setStartDate('');
+                      setEndDate('');
                       setSortBy('date-desc');
                     }}
-                    className="w-full bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 text-[10px] font-bold py-2 rounded-xl border border-slate-200 transition"
+                    className="w-full sm:w-auto px-4 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 text-[10px] font-bold py-1.5 rounded-lg border border-slate-200 transition text-center"
                   >
                     Atur Ulang Semua Filter
                   </button>
                 </div>
-
               </div>
             </motion.div>
           )}
@@ -242,18 +272,18 @@ export default function TransactionsTab({
       </div>
 
       {/* FILTER SUMMARY INSIGHT */}
-      <div className="grid grid-cols-3 gap-3">
-        <div className="bg-slate-50 border border-slate-100 rounded-xl p-3 text-center">
-          <span className="text-[9px] text-slate-400 uppercase font-bold tracking-wider block">Pemasukan Terfilter</span>
-          <span className="text-xs sm:text-sm font-bold font-mono text-emerald-600 block mt-0.5">{formatIDR(totalFilteredIncome)}</span>
+      <div className="grid grid-cols-3 gap-1.5 sm:gap-3">
+        <div className="bg-slate-50 border border-slate-100 rounded-lg p-2 sm:p-3 text-center">
+          <span className="text-[8px] sm:text-[9px] text-slate-400 uppercase font-bold tracking-wider block">Pemasukan</span>
+          <span className="text-[10px] sm:text-xs font-bold font-mono text-emerald-600 block mt-0.5">{formatIDR(totalFilteredIncome)}</span>
         </div>
-        <div className="bg-slate-50 border border-slate-100 rounded-xl p-3 text-center">
-          <span className="text-[9px] text-slate-400 uppercase font-bold tracking-wider block">Pengeluaran Terfilter</span>
-          <span className="text-xs sm:text-sm font-bold font-mono text-rose-600 block mt-0.5">{formatIDR(totalFilteredExpense)}</span>
+        <div className="bg-slate-50 border border-slate-100 rounded-lg p-2 sm:p-3 text-center">
+          <span className="text-[8px] sm:text-[9px] text-slate-400 uppercase font-bold tracking-wider block">Pengeluaran</span>
+          <span className="text-[10px] sm:text-xs font-bold font-mono text-rose-600 block mt-0.5">{formatIDR(totalFilteredExpense)}</span>
         </div>
-        <div className="bg-slate-50 border border-slate-100 rounded-xl p-3 text-center">
-          <span className="text-[9px] text-slate-400 uppercase font-bold tracking-wider block">Arus Kas Bersih</span>
-          <span className={`text-xs sm:text-sm font-bold font-mono block mt-0.5 ${netFilteredBalance >= 0 ? 'text-indigo-600' : 'text-rose-600'}`}>
+        <div className="bg-slate-50 border border-slate-100 rounded-lg p-2 sm:p-3 text-center">
+          <span className="text-[8px] sm:text-[9px] text-slate-400 uppercase font-bold tracking-wider block">Selisih</span>
+          <span className={`text-[10px] sm:text-xs font-bold font-mono block mt-0.5 ${netFilteredBalance >= 0 ? 'text-indigo-600' : 'text-rose-600'}`}>
             {netFilteredBalance >= 0 ? '+' : ''}{formatIDR(netFilteredBalance)}
           </span>
         </div>

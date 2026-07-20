@@ -78,4 +78,5 @@ export interface AppSettings {
   currency: string;
   pushNotifications: boolean;
   budgetWarningLimit: number; // e.g., 80 for 80%
+  darkMode?: boolean;
 }
