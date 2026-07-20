@@ -1,0 +1,885 @@
+import express from 'express';
+import path from 'path';
+import fs from 'fs';
+import crypto from 'crypto';
+import admin from 'firebase-admin';
+import { getFirestore } from 'firebase-admin/firestore';
+import { createServer as createViteServer } from 'vite';
+
+const PORT = 3000;
+
+// Initialize Firebase Admin with dynamic fallback to local persistent file store
+let db: FirebaseFirestore.Firestore;
+
+class PersistentMockFirestore {
+  private filePath = path.join(process.cwd(), 'database-mock.json');
+  private collections: Record<string, Record<string, any>> = {};
+
+  constructor() {
+    this.load();
+  }
+
+  private load() {
+    try {
+      if (fs.existsSync(this.filePath)) {
+        const fileContent = fs.readFileSync(this.filePath, 'utf8');
+        this.collections = JSON.parse(fileContent);
+        console.log('Loaded mock database successfully from local storage.');
+      } else {
+        console.log('No local mock database file found. Initializing empty.');
+      }
+    } catch (err) {
+      console.error('Failed to load local mock database:', err);
+    }
+  }
+
+  private save() {
+    try {
+      fs.writeFileSync(this.filePath, JSON.stringify(this.collections, null, 2), 'utf8');
+    } catch (err) {
+      console.error('Failed to save local mock database:', err);
+    }
+  }
+
+  collection(name: string) {
+    if (!this.collections[name]) {
+      this.collections[name] = {};
+    }
+    const col = this.collections[name];
+    return {
+      doc: (id: string) => ({
+        get: async () => ({
+          exists: col[id] !== undefined,
+          data: () => col[id] ? { ...col[id] } : undefined,
+        }),
+        set: async (data: any, opts?: any) => {
+          if (opts?.merge && col[id]) {
+            col[id] = { ...col[id], ...data };
+          } else {
+            col[id] = { ...data };
+          }
+          this.save();
+        },
+        delete: async () => {
+          delete col[id];
+          this.save();
+        }
+      }),
+      where: (field: string, op: string, val: any) => ({
+        get: async () => {
+          const docs = Object.values(col).filter(item => {
+            if (op === '==') return item[field] === val;
+            return false;
+          });
+          return {
+            docs: docs.map(d => ({
+              id: d.id,
+              data: () => ({ ...d })
+            }))
+          };
+        }
+      }),
+      get: async () => ({
+        docs: Object.values(col).map(d => ({
+          id: d.id,
+          data: () => ({ ...d })
+        }))
+      })
+    } as any;
+  }
+}
+
+async function initializeFirebase() {
+  try {
+    const configPath = path.join(process.cwd(), 'firebase-applet-config.json');
+    let projectId = 'gen-lang-client-0053714344';
+    let databaseId = 'ai-studio-dompetkita-8178a977-dd36-4d01-ac6a-1a04aaf9886e';
+
+    if (fs.existsSync(configPath)) {
+      try {
+        const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+        if (config.projectId) projectId = config.projectId;
+        if (config.firestoreDatabaseId) databaseId = config.firestoreDatabaseId;
+      } catch (e) {
+        console.error('Error parsing firebase-applet-config.json:', e);
+      }
+    }
+
+    // Initialize Admin
+    const app = admin.initializeApp({
+      projectId: projectId,
+    });
+
+    // Use getFirestore with custom databaseId
+    const tempDb = getFirestore(app, databaseId);
+    
+    // Eagerly verify write permissions
+    console.log('Verifying cloud database write permissions...');
+    const testId = 'test_' + Date.now();
+    await tempDb.collection('test_connection').doc(testId).set({ timestamp: new Date().toISOString() });
+    await tempDb.collection('test_connection').doc(testId).delete();
+    
+    db = tempDb;
+    console.log(`Firebase Admin initialized successfully targeting Firestore database: ${databaseId}`);
+  } catch (error) {
+    console.error('Failed to initialize or write to Firebase Admin, using local persistent fallback store:', error);
+    db = new PersistentMockFirestore() as any;
+  }
+}
+
+
+// Helpers for Auth
+function generateSalt(): string {
+  return crypto.randomBytes(16).toString('hex');
+}
+
+function hashPassword(password: string, salt: string): string {
+  return crypto.pbkdf2Sync(password, salt, 1000, 64, 'sha512').toString('hex');
+}
+
+// Default Data Seed Helper
+async function seedUserData(userId: string) {
+  const DEFAULT_CATEGORIES = [
+    { id: 'cat-in-1', name: 'Gaji', type: 'income', iconName: 'Briefcase', color: 'bg-emerald-500' },
+    { id: 'cat-in-2', name: 'Bonus & Insentif', type: 'income', iconName: 'Award', color: 'bg-teal-500' },
+    { id: 'cat-in-3', name: 'Investasi', type: 'income', iconName: 'TrendingUp', color: 'bg-cyan-500' },
+    { id: 'cat-in-4', name: 'Lain-lain', type: 'income', iconName: 'PlusCircle', color: 'bg-slate-500' },
+    { id: 'cat-ex-1', name: 'Makanan & Minuman', type: 'expense', iconName: 'Utensils', color: 'bg-amber-500' },
+    { id: 'cat-ex-2', name: 'Belanja Bulanan', type: 'expense', iconName: 'ShoppingBag', color: 'bg-blue-500' },
+    { id: 'cat-ex-3', name: 'Transportasi', type: 'expense', iconName: 'Car', color: 'bg-indigo-500' },
+    { id: 'cat-ex-4', name: 'Tagihan & Utilitas', type: 'expense', iconName: 'Receipt', color: 'bg-orange-500' },
+    { id: 'cat-ex-5', name: 'Hiburan & Liburan', type: 'expense', iconName: 'Gamepad2', color: 'bg-pink-500' },
+    { id: 'cat-ex-6', name: 'Pendidikan', type: 'expense', iconName: 'GraduationCap', color: 'bg-violet-500' },
+    { id: 'cat-ex-7', name: 'Kesehatan', type: 'expense', iconName: 'HeartPulse', color: 'bg-red-500' },
+    { id: 'cat-ex-8', name: 'Lain-lain', type: 'expense', iconName: 'HelpCircle', color: 'bg-slate-500' }
+  ];
+
+  const DEFAULT_SAVING_GOALS = [
+    { id: 'goal-1', title: 'Dana Darurat 6 Bulan', targetAmount: 24000000, currentAmount: 0, deadline: '2026-12-31', status: 'active' },
+    { id: 'goal-2', title: 'Liburan Keluarga Bali', targetAmount: 12000000, currentAmount: 0, deadline: '2026-08-15', status: 'active' },
+    { id: 'goal-3', title: 'Beli Laptop Rian', targetAmount: 8500000, currentAmount: 0, deadline: '2026-10-01', status: 'active' }
+  ];
+
+  const DEFAULT_CREDIT_CARDS = [
+    { id: 'card-1', cardName: 'BCA Everyday Card', lastFourDigits: '8821', limitAmount: 15000000, usedAmount: 0, dueDate: 'Tiap Tanggal 10', color: 'from-blue-600 to-indigo-800' },
+    { id: 'card-2', cardName: 'Mandiri Signature', lastFourDigits: '4490', limitAmount: 40000000, usedAmount: 0, dueDate: 'Tiap Tanggal 25', color: 'from-slate-800 to-slate-950' }
+  ];
+
+  const DEFAULT_FAMILY_MEMBERS = [
+    { id: 'fam-1', name: 'Budi (Ayah)', role: 'Orang Tua', avatarUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80', monthlySpent: 0 },
+    { id: 'fam-2', name: 'Siti (Ibu)', role: 'Orang Tua', avatarUrl: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150&auto=format&fit=crop&q=80', monthlySpent: 0 },
+    { id: 'fam-3', name: 'Rian (Anak)', role: 'Anak', avatarUrl: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80', monthlyLimit: 1500000, monthlySpent: 0 }
+  ];
+
+  const DEFAULT_TRANSACTIONS: any[] = [];
+
+  const DEFAULT_NOTIFICATIONS: any[] = [];
+
+  const DEFAULT_SETTINGS = {
+    language: 'id',
+    currency: 'IDR',
+    pushNotifications: true,
+    budgetWarningLimit: 80
+  };
+
+  // Seed settings
+  await db.collection('settings').doc(userId).set(DEFAULT_SETTINGS);
+
+  // Seed others using batched writes or sequential loops
+  for (const cat of DEFAULT_CATEGORIES) {
+    await db.collection('categories').doc(`${userId}_${cat.id}`).set({ ...cat, userId });
+  }
+  for (const goal of DEFAULT_SAVING_GOALS) {
+    await db.collection('saving_goals').doc(`${userId}_${goal.id}`).set({ ...goal, userId });
+  }
+  for (const card of DEFAULT_CREDIT_CARDS) {
+    await db.collection('credit_cards').doc(`${userId}_${card.id}`).set({ ...card, userId });
+  }
+  for (const fam of DEFAULT_FAMILY_MEMBERS) {
+    await db.collection('family_members').doc(`${userId}_${fam.id}`).set({ ...fam, userId });
+  }
+  for (const tx of DEFAULT_TRANSACTIONS) {
+    await db.collection('transactions').doc(`${userId}_${tx.id}`).set({ ...tx, userId });
+  }
+  for (const notif of DEFAULT_NOTIFICATIONS) {
+    await db.collection('notifications').doc(`${userId}_${notif.id}`).set({ ...notif, userId });
+  }
+}
+
+async function purgeDemoData() {
+  try {
+    const snap = await db.collection('users').get();
+    for (const doc of snap.docs) {
+      const data = doc.data();
+      if (data.isDemo || doc.id.startsWith('usr_demo_') || (data.email && data.email.endsWith('@dompetkita.id'))) {
+        console.log(`Purging demo user: ${doc.id}`);
+        await doc.ref.delete();
+      }
+    }
+    
+    const colList = ['transactions', 'saving_goals', 'credit_cards', 'family_members', 'categories', 'notifications', 'settings'];
+    for (const colName of colList) {
+      const colSnap = await db.collection(colName).get();
+      for (const doc of colSnap.docs) {
+        const data = doc.data();
+        if (doc.id.startsWith('usr_demo_') || (data.userId && data.userId.startsWith('usr_demo_'))) {
+          await doc.ref.delete();
+        }
+      }
+    }
+    console.log('Purged demo users successfully.');
+  } catch (err) {
+    console.error('Failed to purge demo users on start:', err);
+  }
+}
+
+async function main() {
+  await initializeFirebase();
+  await purgeDemoData();
+  const app = express();
+  app.use(express.json());
+
+  // Middleware Auth Checker
+  const requireAuth = async (req: express.Request, res: express.Response, next: express.NextFunction) => {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({ error: 'Sesi kedaluwarsa atau tidak valid. Silakan masuk kembali.' });
+    }
+    const token = authHeader.split(' ')[1];
+    if (!token) {
+      return res.status(401).json({ error: 'Sesi kedaluwarsa atau tidak valid. Silakan masuk kembali.' });
+    }
+    
+    // Verify that user exists in Firestore
+    const userDoc = await db.collection('users').doc(token).get();
+    if (!userDoc.exists) {
+      return res.status(401).json({ error: 'Pengguna tidak ditemukan.' });
+    }
+
+    req.body.currentUserId = token;
+    next();
+  };
+
+  // Auth APIs
+  app.post('/api/auth/register', async (req, res) => {
+    const { name, email, password, avatarUrl } = req.body;
+    if (!name || !email || !password) {
+      return res.status(400).json({ error: 'Nama, Email, dan Kata Sandi wajib diisi.' });
+    }
+
+    const emailNormalized = email.toLowerCase().trim();
+    
+    try {
+      // Check if user exists
+      const existingUserQuery = await db.collection('users').where('email', '==', emailNormalized).get();
+      if (existingUserQuery.docs.length > 0) {
+        return res.status(400).json({ error: 'Alamat email ini sudah terdaftar.' });
+      }
+
+      const salt = generateSalt();
+      const passwordHash = hashPassword(password, salt);
+      const userId = 'usr_' + crypto.randomUUID();
+
+      const newUser = {
+        id: userId,
+        name,
+        email: emailNormalized,
+        avatarUrl: avatarUrl || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
+        salt,
+        passwordHash,
+        selectedMemberId: 'fam-1',
+        createdAt: new Date().toISOString()
+      };
+
+      await db.collection('users').doc(userId).set(newUser);
+      
+      // Seed original default data for newly registered user so they have a fully ready experience!
+      await seedUserData(userId);
+
+      res.status(201).json({
+        message: 'Registrasi berhasil!',
+        user: {
+          id: newUser.id,
+          name: newUser.name,
+          email: newUser.email,
+          avatarUrl: newUser.avatarUrl,
+          selectedMemberId: 'fam-1'
+        }
+      });
+    } catch (err: any) {
+      console.error('Registration error:', err);
+      res.status(500).json({ error: 'Terjadi kesalahan pada server saat pendaftaran.' });
+    }
+  });
+
+  app.post('/api/auth/login', async (req, res) => {
+    const { email, password } = req.body;
+    if (!email || !password) {
+      return res.status(400).json({ error: 'Email dan kata sandi wajib diisi.' });
+    }
+
+    const emailNormalized = email.toLowerCase().trim();
+
+    try {
+      // Find user
+      const userQuery = await db.collection('users').where('email', '==', emailNormalized).get();
+      if (userQuery.docs.length === 0) {
+        return res.status(400).json({ error: 'Email atau kata sandi Anda salah.' });
+      }
+
+      const userDoc = userQuery.docs[0];
+      const userData = userDoc.data();
+
+      // Check password
+      const calculatedHash = hashPassword(password, userData.salt);
+      if (calculatedHash !== userData.passwordHash) {
+        return res.status(400).json({ error: 'Email atau kata sandi Anda salah.' });
+      }
+
+      res.json({
+        token: userData.id,
+        user: {
+          name: userData.name,
+          email: userData.email,
+          avatarUrl: userData.avatarUrl,
+          selectedMemberId: userData.selectedMemberId || 'fam-1'
+        }
+      });
+    } catch (err: any) {
+      console.error('Login error:', err);
+      res.status(500).json({ error: 'Terjadi kesalahan sistem saat masuk.' });
+    }
+  });
+
+  // Get all registered users from the database for account selection
+  app.get('/api/auth/users', async (req, res) => {
+    try {
+      const usersSnap = await db.collection('users').get();
+      const list = usersSnap.docs
+        .map(doc => doc.data())
+        .filter(u => !u.isDemo && !u.id.startsWith('usr_demo_') && !u.email.endsWith('@dompetkita.id'))
+        .map(u => ({
+          id: u.id,
+          name: u.name,
+          email: u.email,
+          avatarUrl: u.avatarUrl
+        }));
+      res.json(list);
+    } catch (err) {
+      console.error('Failed to fetch registered users:', err);
+      res.status(500).json({ error: 'Gagal mengambil daftar pengguna.' });
+    }
+  });
+
+  // Login instantly using user ID from the selection list
+  app.post('/api/auth/login-by-id', async (req, res) => {
+    const { userId } = req.body;
+    if (!userId) {
+      return res.status(400).json({ error: 'User ID wajib diisi.' });
+    }
+
+    try {
+      const userDoc = await db.collection('users').doc(userId).get();
+      if (!userDoc.exists) {
+        return res.status(404).json({ error: 'Pengguna tidak ditemukan.' });
+      }
+
+      const userData = userDoc.data()!;
+      res.json({
+        token: userData.id,
+        user: {
+          name: userData.name,
+          email: userData.email,
+          avatarUrl: userData.avatarUrl,
+          selectedMemberId: userData.selectedMemberId || 'fam-1'
+        }
+      });
+    } catch (err: any) {
+      console.error('Login by ID error:', err);
+      res.status(500).json({ error: 'Gagal masuk dengan pilihan akun.' });
+    }
+  });
+
+  // Fully delete user profile and all associated data from the database
+  app.delete('/api/auth/delete-account', requireAuth, async (req, res) => {
+    const userId = req.body.currentUserId;
+    try {
+      // Delete core user doc
+      await db.collection('users').doc(userId).delete();
+      // Delete settings
+      await db.collection('settings').doc(userId).delete();
+      
+      // Delete user's transactions
+      const txs = await db.collection('transactions').get();
+      for (const doc of txs.docs) {
+        if (doc.id.startsWith(`${userId}_`)) {
+          await doc.ref.delete();
+        }
+      }
+      
+      // Delete user's saving goals
+      const goals = await db.collection('saving_goals').get();
+      for (const doc of goals.docs) {
+        if (doc.id.startsWith(`${userId}_`)) {
+          await doc.ref.delete();
+        }
+      }
+
+      // Delete user's credit cards
+      const cards = await db.collection('credit_cards').get();
+      for (const doc of cards.docs) {
+        if (doc.id.startsWith(`${userId}_`)) {
+          await doc.ref.delete();
+        }
+      }
+
+      // Delete family members
+      const members = await db.collection('family_members').get();
+      for (const doc of members.docs) {
+        if (doc.id.startsWith(`${userId}_`)) {
+          await doc.ref.delete();
+        }
+      }
+
+      // Delete categories
+      const categories = await db.collection('categories').get();
+      for (const doc of categories.docs) {
+        if (doc.id.startsWith(`${userId}_`)) {
+          await doc.ref.delete();
+        }
+      }
+
+      // Delete notifications
+      const notifications = await db.collection('notifications').get();
+      for (const doc of notifications.docs) {
+        if (doc.id.startsWith(`${userId}_`)) {
+          await doc.ref.delete();
+        }
+      }
+
+      res.json({ success: true });
+    } catch (err) {
+      console.error('Error deleting account:', err);
+      res.status(500).json({ error: 'Gagal menghapus seluruh data akun dari database.' });
+    }
+  });
+
+  app.get('/api/auth/me', requireAuth, async (req, res) => {
+    const userId = req.body.currentUserId;
+    try {
+      const userDoc = await db.collection('users').doc(userId).get();
+      if (!userDoc.exists) {
+        return res.status(404).json({ error: 'Profil tidak ditemukan.' });
+      }
+      const data = userDoc.data()!;
+      res.json({
+        user: {
+          name: data.name,
+          email: data.email,
+          avatarUrl: data.avatarUrl,
+          selectedMemberId: data.selectedMemberId || 'fam-1'
+        }
+      });
+    } catch (err) {
+      res.status(500).json({ error: 'Gagal mengambil data profil.' });
+    }
+  });
+
+  // Settings APIs
+  app.get('/api/settings', requireAuth, async (req, res) => {
+    const userId = req.body.currentUserId;
+    try {
+      const settingsDoc = await db.collection('settings').doc(userId).get();
+      if (!settingsDoc.exists) {
+        return res.json({ language: 'id', currency: 'IDR', pushNotifications: true, budgetWarningLimit: 80 });
+      }
+      res.json(settingsDoc.data());
+    } catch (err) {
+      res.status(500).json({ error: 'Gagal mengambil setelan.' });
+    }
+  });
+
+  app.post('/api/settings', requireAuth, async (req, res) => {
+    const userId = req.body.currentUserId;
+    const { language, currency, pushNotifications, budgetWarningLimit } = req.body;
+    try {
+      const payload = { language, currency, pushNotifications, budgetWarningLimit };
+      await db.collection('settings').doc(userId).set(payload, { merge: true });
+      res.json({ success: true, settings: payload });
+    } catch (err) {
+      res.status(500).json({ error: 'Gagal memperbarui setelan.' });
+    }
+  });
+
+  // Transactions CRUD
+  app.get('/api/transactions', requireAuth, async (req, res) => {
+    const userId = req.body.currentUserId;
+    try {
+      const snap = await db.collection('transactions').where('userId', '==', userId).get();
+      const list = snap.docs.map(doc => {
+        const d = doc.data();
+        const { userId: _, ...tx } = d;
+        return tx;
+      });
+      // Sort by date descending
+      list.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+      res.json(list);
+    } catch (err) {
+      res.status(500).json({ error: 'Gagal mengambil transaksi.' });
+    }
+  });
+
+  app.post('/api/transactions', requireAuth, async (req, res) => {
+    const userId = req.body.currentUserId;
+    const tx = req.body;
+    delete tx.currentUserId;
+    
+    if (!tx.id) tx.id = 'tx_' + crypto.randomUUID();
+    tx.userId = userId;
+
+    try {
+      await db.collection('transactions').doc(`${userId}_${tx.id}`).set(tx);
+      res.status(201).json(tx);
+    } catch (err) {
+      res.status(500).json({ error: 'Gagal membuat transaksi.' });
+    }
+  });
+
+  app.put('/api/transactions/:id', requireAuth, async (req, res) => {
+    const userId = req.body.currentUserId;
+    const { id } = req.params;
+    const tx = req.body;
+    delete tx.currentUserId;
+    tx.userId = userId;
+    tx.id = id;
+
+    try {
+      await db.collection('transactions').doc(`${userId}_${id}`).set(tx, { merge: true });
+      res.json(tx);
+    } catch (err) {
+      res.status(500).json({ error: 'Gagal mengedit transaksi.' });
+    }
+  });
+
+  app.delete('/api/transactions/:id', requireAuth, async (req, res) => {
+    const userId = req.body.currentUserId;
+    const { id } = req.params;
+    try {
+      await db.collection('transactions').doc(`${userId}_${id}`).delete();
+      res.json({ success: true });
+    } catch (err) {
+      res.status(500).json({ error: 'Gagal menghapus transaksi.' });
+    }
+  });
+
+  // Credit Cards CRUD
+  app.get('/api/credit-cards', requireAuth, async (req, res) => {
+    const userId = req.body.currentUserId;
+    try {
+      const snap = await db.collection('credit_cards').where('userId', '==', userId).get();
+      res.json(snap.docs.map(doc => {
+        const { userId: _, ...card } = doc.data();
+        return card;
+      }));
+    } catch (err) {
+      res.status(500).json({ error: 'Gagal mengambil kartu kredit.' });
+    }
+  });
+
+  app.post('/api/credit-cards', requireAuth, async (req, res) => {
+    const userId = req.body.currentUserId;
+    const card = req.body;
+    delete card.currentUserId;
+
+    if (!card.id) card.id = 'card_' + crypto.randomUUID();
+    card.userId = userId;
+
+    try {
+      await db.collection('credit_cards').doc(`${userId}_${card.id}`).set(card);
+      res.status(201).json(card);
+    } catch (err) {
+      res.status(500).json({ error: 'Gagal menyimpan kartu kredit.' });
+    }
+  });
+
+  app.put('/api/credit-cards/:id', requireAuth, async (req, res) => {
+    const userId = req.body.currentUserId;
+    const { id } = req.params;
+    const card = req.body;
+    delete card.currentUserId;
+    card.userId = userId;
+    card.id = id;
+
+    try {
+      await db.collection('credit_cards').doc(`${userId}_${id}`).set(card, { merge: true });
+      res.json(card);
+    } catch (err) {
+      res.status(500).json({ error: 'Gagal mengedit kartu kredit.' });
+    }
+  });
+
+  app.delete('/api/credit-cards/:id', requireAuth, async (req, res) => {
+    const userId = req.body.currentUserId;
+    const { id } = req.params;
+    try {
+      await db.collection('credit_cards').doc(`${userId}_${id}`).delete();
+      res.json({ success: true });
+    } catch (err) {
+      res.status(500).json({ error: 'Gagal menghapus kartu kredit.' });
+    }
+  });
+
+  // Saving Goals CRUD
+  app.get('/api/saving-goals', requireAuth, async (req, res) => {
+    const userId = req.body.currentUserId;
+    try {
+      const snap = await db.collection('saving_goals').where('userId', '==', userId).get();
+      res.json(snap.docs.map(doc => {
+        const { userId: _, ...goal } = doc.data();
+        return goal;
+      }));
+    } catch (err) {
+      res.status(500).json({ error: 'Gagal mengambil target tabungan.' });
+    }
+  });
+
+  app.post('/api/saving-goals', requireAuth, async (req, res) => {
+    const userId = req.body.currentUserId;
+    const goal = req.body;
+    delete goal.currentUserId;
+
+    if (!goal.id) goal.id = 'goal_' + crypto.randomUUID();
+    goal.userId = userId;
+
+    try {
+      await db.collection('saving_goals').doc(`${userId}_${goal.id}`).set(goal);
+      res.status(201).json(goal);
+    } catch (err) {
+      res.status(500).json({ error: 'Gagal menyimpan target tabungan.' });
+    }
+  });
+
+  app.put('/api/saving-goals/:id', requireAuth, async (req, res) => {
+    const userId = req.body.currentUserId;
+    const { id } = req.params;
+    const goal = req.body;
+    delete goal.currentUserId;
+    goal.userId = userId;
+    goal.id = id;
+
+    try {
+      await db.collection('saving_goals').doc(`${userId}_${id}`).set(goal, { merge: true });
+      res.json(goal);
+    } catch (err) {
+      res.status(500).json({ error: 'Gagal mengedit target tabungan.' });
+    }
+  });
+
+  app.delete('/api/saving-goals/:id', requireAuth, async (req, res) => {
+    const userId = req.body.currentUserId;
+    const { id } = req.params;
+    try {
+      await db.collection('saving_goals').doc(`${userId}_${id}`).delete();
+      res.json({ success: true });
+    } catch (err) {
+      res.status(500).json({ error: 'Gagal menghapus target tabungan.' });
+    }
+  });
+
+  // Family Members CRUD
+  app.get('/api/family-members', requireAuth, async (req, res) => {
+    const userId = req.body.currentUserId;
+    try {
+      const snap = await db.collection('family_members').where('userId', '==', userId).get();
+      res.json(snap.docs.map(doc => {
+        const { userId: _, ...fam } = doc.data();
+        return fam;
+      }));
+    } catch (err) {
+      res.status(500).json({ error: 'Gagal mengambil anggota keluarga.' });
+    }
+  });
+
+  app.post('/api/family-members', requireAuth, async (req, res) => {
+    const userId = req.body.currentUserId;
+    const fam = req.body;
+    delete fam.currentUserId;
+
+    if (!fam.id) fam.id = 'fam_' + crypto.randomUUID();
+    fam.userId = userId;
+
+    try {
+      await db.collection('family_members').doc(`${userId}_${fam.id}`).set(fam);
+      res.status(201).json(fam);
+    } catch (err) {
+      res.status(500).json({ error: 'Gagal menambah anggota keluarga.' });
+    }
+  });
+
+  app.put('/api/family-members/:id', requireAuth, async (req, res) => {
+    const userId = req.body.currentUserId;
+    const { id } = req.params;
+    const fam = req.body;
+    delete fam.currentUserId;
+    fam.userId = userId;
+    fam.id = id;
+
+    try {
+      await db.collection('family_members').doc(`${userId}_${id}`).set(fam, { merge: true });
+      res.json(fam);
+    } catch (err) {
+      res.status(500).json({ error: 'Gagal memperbarui anggota keluarga.' });
+    }
+  });
+
+  app.delete('/api/family-members/:id', requireAuth, async (req, res) => {
+    const userId = req.body.currentUserId;
+    const { id } = req.params;
+    try {
+      await db.collection('family_members').doc(`${userId}_${id}`).delete();
+      res.json({ success: true });
+    } catch (err) {
+      res.status(500).json({ error: 'Gagal menghapus anggota keluarga.' });
+    }
+  });
+
+  // Categories CRUD
+  app.get('/api/categories', requireAuth, async (req, res) => {
+    const userId = req.body.currentUserId;
+    try {
+      const snap = await db.collection('categories').where('userId', '==', userId).get();
+      res.json(snap.docs.map(doc => {
+        const { userId: _, ...cat } = doc.data();
+        return cat;
+      }));
+    } catch (err) {
+      res.status(500).json({ error: 'Gagal mengambil kategori.' });
+    }
+  });
+
+  app.post('/api/categories', requireAuth, async (req, res) => {
+    const userId = req.body.currentUserId;
+    const cat = req.body;
+    delete cat.currentUserId;
+
+    if (!cat.id) cat.id = 'cat_' + crypto.randomUUID();
+    cat.userId = userId;
+
+    try {
+      await db.collection('categories').doc(`${userId}_${cat.id}`).set(cat);
+      res.status(201).json(cat);
+    } catch (err) {
+      res.status(500).json({ error: 'Gagal menyimpan kategori.' });
+    }
+  });
+
+  app.put('/api/categories/:id', requireAuth, async (req, res) => {
+    const userId = req.body.currentUserId;
+    const { id } = req.params;
+    const cat = req.body;
+    delete cat.currentUserId;
+    cat.userId = userId;
+    cat.id = id;
+
+    try {
+      await db.collection('categories').doc(`${userId}_${id}`).set(cat, { merge: true });
+      res.json(cat);
+    } catch (err) {
+      res.status(500).json({ error: 'Gagal memperbarui kategori.' });
+    }
+  });
+
+  app.delete('/api/categories/:id', requireAuth, async (req, res) => {
+    const userId = req.body.currentUserId;
+    const { id } = req.params;
+    try {
+      await db.collection('categories').doc(`${userId}_${id}`).delete();
+      res.json({ success: true });
+    } catch (err) {
+      res.status(500).json({ error: 'Gagal menghapus kategori.' });
+    }
+  });
+
+  // Notifications CRUD
+  app.get('/api/notifications', requireAuth, async (req, res) => {
+    const userId = req.body.currentUserId;
+    try {
+      const snap = await db.collection('notifications').where('userId', '==', userId).get();
+      const list = snap.docs.map(doc => {
+        const { userId: _, ...notif } = doc.data();
+        return notif;
+      });
+      list.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+      res.json(list);
+    } catch (err) {
+      res.status(500).json({ error: 'Gagal mengambil notifikasi.' });
+    }
+  });
+
+  app.put('/api/notifications/:id', requireAuth, async (req, res) => {
+    const userId = req.body.currentUserId;
+    const { id } = req.params;
+    const notif = req.body;
+    delete notif.currentUserId;
+    notif.userId = userId;
+    notif.id = id;
+
+    try {
+      await db.collection('notifications').doc(`${userId}_${id}`).set(notif, { merge: true });
+      res.json(notif);
+    } catch (err) {
+      res.status(500).json({ error: 'Gagal mengedit notifikasi.' });
+    }
+  });
+
+  app.post('/api/notifications', requireAuth, async (req, res) => {
+    const userId = req.body.currentUserId;
+    const notif = req.body;
+    delete notif.currentUserId;
+
+    if (!notif.id) notif.id = 'notif_' + crypto.randomUUID();
+    notif.userId = userId;
+
+    try {
+      await db.collection('notifications').doc(`${userId}_${notif.id}`).set(notif);
+      res.status(201).json(notif);
+    } catch (err) {
+      res.status(500).json({ error: 'Gagal menyimpan notifikasi.' });
+    }
+  });
+
+  app.delete('/api/notifications/:id', requireAuth, async (req, res) => {
+    const userId = req.body.currentUserId;
+    const { id } = req.params;
+    try {
+      await db.collection('notifications').doc(`${userId}_${id}`).delete();
+      res.json({ success: true });
+    } catch (err) {
+      res.status(500).json({ error: 'Gagal menghapus notifikasi.' });
+    }
+  });
+
+
+  // Serve frontend files
+  if (process.env.NODE_ENV !== 'production') {
+    const vite = await createViteServer({
+      server: { middlewareMode: true },
+      appType: 'spa',
+    });
+    app.use(vite.middlewares);
+  } else {
+    const distPath = path.join(process.cwd(), 'dist');
+    app.use(express.static(distPath));
+    app.get('*', (req, res) => {
+      res.sendFile(path.join(distPath, 'index.html'));
+    });
+  }
+
+  app.listen(PORT, '0.0.0.0', () => {
+    console.log(`Server running on http://localhost:${PORT}`);
+  });
+}
+
+main().catch((err) => {
+  console.error('Fatal error starting express server:', err);
+});
