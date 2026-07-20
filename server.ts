@@ -61,6 +61,12 @@ class PersistentMockFirestore {
           }
           this.save();
         },
+        update: async (data: any) => {
+          if (col[id]) {
+            col[id] = { ...col[id], ...data };
+            this.save();
+          }
+        },
         delete: async () => {
           delete col[id];
           this.save();
@@ -68,21 +74,21 @@ class PersistentMockFirestore {
       }),
       where: (field: string, op: string, val: any) => ({
         get: async () => {
-          const docs = Object.values(col).filter(item => {
+          const docs = Object.entries(col).filter(([key, item]) => {
             if (op === '==') return item[field] === val;
             return false;
           });
           return {
-            docs: docs.map(d => ({
-              id: d.id,
+            docs: docs.map(([key, d]) => ({
+              id: key,
               data: () => ({ ...d })
             }))
           };
         }
       }),
       get: async () => ({
-        docs: Object.values(col).map(d => ({
-          id: d.id,
+        docs: Object.entries(col).map(([key, d]) => ({
+          id: key,
           data: () => ({ ...d })
         }))
       })
