@@ -84,23 +84,7 @@ export default function AuthScreen({ onLoginSuccess }: AuthScreenProps) {
         setCustomError('Silakan masukkan email Anda.');
         return;
       }
-      setLoading(true);
-      try {
-        const response = await fetch('/api/auth/forgot-password', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email })
-        });
-        const data = await response.json();
-        if (!response.ok) {
-          throw new Error(data.error || 'Gagal mengirim email pemulihan.');
-        }
-        setSuccessMsg(data.message || 'Kata sandi sementara telah berhasil dikirim ke email Anda.');
-      } catch (err: any) {
-        setCustomError(err.message || 'Gagal mengirim email pemulihan.');
-      } finally {
-        setLoading(false);
-      }
+      setSuccessMsg('Tautan pemulihan kata sandi telah dikirim ke email Anda.');
     }
   };
 
@@ -334,10 +318,9 @@ export default function AuthScreen({ onLoginSuccess }: AuthScreenProps) {
 
                 <button
                   type="submit"
-                  disabled={loading}
-                  className="w-full py-2.5 bg-emerald-500 hover:bg-emerald-600 disabled:bg-emerald-800 text-slate-950 font-bold text-sm rounded-xl transition-all shadow-md flex items-center justify-center gap-1.5 mt-2 cursor-pointer"
+                  className="w-full py-2.5 bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-bold text-sm rounded-xl transition-all shadow-md flex items-center justify-center gap-1.5 mt-2 cursor-pointer"
                 >
-                  {loading ? 'Mengirim...' : 'Kirim Tautan Atur Ulang'} <ArrowRight className="w-4 h-4" />
+                  Kirim Tautan Atur Ulang <ArrowRight className="w-4 h-4" />
                 </button>
               </form>
 
