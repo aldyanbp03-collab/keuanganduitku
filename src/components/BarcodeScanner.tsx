@@ -412,6 +412,10 @@ export default function BarcodeScanner({ onScanComplete, onInstantSave, creditCa
                   >
                     <option value="Makanan & Minuman">Makanan & Minuman</option>
                     <option value="Belanja Bulanan">Belanja Bulanan</option>
+                    <option value="Transportasi">Transportasi</option>
+                    <option value="Tagihan & Utilitas">Tagihan & Utilitas</option>
+                    <option value="Hiburan & Liburan">Hiburan & Liburan</option>
+                    <option value="Pendidikan">Pendidikan</option>
                     <option value="Kesehatan">Kesehatan</option>
                     <option value="Lain-lain">Lain-lain</option>
                   </select>

@@ -961,7 +961,8 @@ const requireAuth = async (req: express.Request, res: express.Response, next: ex
 
       if (image.includes(';base64,')) {
         const parts = image.split(';base64,');
-        mimeType = parts[0].replace('data:', '');
+        const match = parts[0].match(/data:(image\/[a-zA-Z0-9.\-+]+)/);
+        mimeType = match ? match[1] : 'image/jpeg';
         base64Data = parts[1];
       }
 
@@ -976,7 +977,22 @@ const requireAuth = async (req: express.Request, res: express.Response, next: ex
             }
           },
           {
-            text: 'Analisislah gambar struk belanja, nota, tagihan, atau tanda terima ini. Temukan nama toko/merchant (nama toko), jumlah total harga yang dibayarkan (harga total belanja), kategori pengeluaran, dan berikan rincian singkat barang sebagai catatan. Kembalikan data dalam format JSON dengan struktur yang tepat sesuai skema yang diminta.'
+            text: `Analisislah gambar struk belanja, nota kasir, tagihan (invoice), struk restoran, atau tanda terima pembayaran ini secara detail.
+Tugas Anda adalah mengekstrak informasi keuangan penting berikut:
+1. "merchantName": Nama toko, minimarket, supermarket, restoran, kafe, atau tempat transaksi lainnya. Cari nama/logo paling besar di bagian atas struk (misalnya Alfamart, Indomaret, Starbucks, McDonald's, Superindo, dll.). Berikan tebakan terbaik jika tidak terbaca jelas. Jangan gunakan kata umum jika nama spesifik tersedia.
+2. "amount": Cari nominal grand total (jumlah keseluruhan yang benar-benar dibayarkan oleh pelanggan setelah diskon atau pajak). Abaikan harga per item, cari angka paling akhir yang biasanya berada di samping tulisan "TOTAL", "GRAND TOTAL", "CASH", "TUNAI", "KARTU", "NETTO", "JUMLAH BAYAR", "RP", atau sejenisnya. Pastikan nilainya berupa ANGKA BULAT SAJA (integer) tanpa desimal, titik, koma, maupun Rp (contoh: 42500).
+3. "category": Kelompokkan pengeluaran ini ke dalam salah satu dari kategori persis berikut berdasarkan jenis merchant atau barang yang dibeli:
+   - "Makanan & Minuman": Untuk restoran, kafe, jajan, kopi, warung makan, dsb.
+   - "Belanja Bulanan": Untuk belanja bahan pokok di supermarket/minimarket seperti Alfamart, Indomaret, Superindo, dsb.
+   - "Transportasi": Untuk bensin, ojek online, taksi, parkir, kereta, tiket perjalanan, dsb.
+   - "Tagihan & Utilitas": Untuk pembayaran listrik, air, internet, langganan aplikasi, tagihan bulanan, dsb.
+   - "Hiburan & Liburan": Untuk bioskop, tiket wisata, game, karaoke, hobi, dsb.
+   - "Pendidikan": Untuk buku pelajaran, SPP, kursus, seminar, alat tulis, dsb.
+   - "Kesehatan": Untuk obat-obatan di apotek, konsultasi dokter, vitamin, dsb.
+   - "Lain-lain": Jika tidak cocok dengan kategori mana pun di atas.
+4. "notes": Rangkum barang-barang yang dibeli secara singkat (contoh: "Membeli minyak goreng, roti, dan susu" atau "Makan siang ramen & ocha").
+
+PENTING: Jawab dalam format JSON yang valid sesuai skema yang diminta tanpa ada teks penjelasan lainnya.`
           }
         ],
         config: {
@@ -994,7 +1010,7 @@ const requireAuth = async (req: express.Request, res: express.Response, next: ex
               },
               category: {
                 type: Type.STRING,
-                description: 'Kategori pengeluaran. Harus salah satu dari: "Makanan & Minuman", "Belanja Bulanan", "Kesehatan", "Lain-lain".'
+                description: 'Kategori pengeluaran. Harus persis salah satu dari kategori ini: "Makanan & Minuman", "Belanja Bulanan", "Transportasi", "Tagihan & Utilitas", "Hiburan & Liburan", "Pendidikan", "Kesehatan", "Lain-lain".'
               },
               notes: {
                 type: Type.STRING,
@@ -1011,7 +1027,12 @@ const requireAuth = async (req: express.Request, res: express.Response, next: ex
         throw new Error('Gemini did not return any text.');
       }
 
-      const result = JSON.parse(text.trim());
+      let cleanedText = text.trim();
+      if (cleanedText.startsWith('```')) {
+        cleanedText = cleanedText.replace(/^```(json)?/i, '').replace(/```$/, '').trim();
+      }
+
+      const result = JSON.parse(cleanedText);
       res.json(result);
     } catch (err: any) {
       console.error('Receipt scan error:', err);
