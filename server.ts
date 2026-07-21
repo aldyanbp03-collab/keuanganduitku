@@ -3,7 +3,7 @@ import path from 'path';
 import fs from 'fs';
 import crypto from 'crypto';
 import admin from 'firebase-admin';
-import { getApps, initializeApp, getApp } from 'firebase-admin/app';
+import { getApps, initializeApp, getApp, cert } from 'firebase-admin/app';
 import { getFirestore } from 'firebase-admin/firestore';
 import { createServer as createViteServer } from 'vite';
 import { GoogleGenAI, Type } from '@google/genai';
@@ -122,9 +122,21 @@ async function initializeFirebase() {
     // Initialize Admin if not already initialized
     let app;
     if (getApps().length === 0) {
-      app = initializeApp({
+      let initConfig: any = {
         projectId: projectId,
-      });
+      };
+
+      if (process.env.FIREBASE_SERVICE_ACCOUNT) {
+        try {
+          const sa = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
+          initConfig.credential = cert(sa);
+          console.log('Using Firebase Service Account from environment variables.');
+        } catch (e) {
+          console.error('Error parsing FIREBASE_SERVICE_ACCOUNT env var:', e);
+        }
+      }
+
+      app = initializeApp(initConfig);
     } else {
       app = getApp();
     }
