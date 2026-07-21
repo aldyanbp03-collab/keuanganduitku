@@ -969,15 +969,16 @@ const requireAuth = async (req: express.Request, res: express.Response, next: ex
       const ai = getGeminiClient();
       const response = await ai.models.generateContent({
         model: 'gemini-3.5-flash',
-        contents: [
-          {
-            inlineData: {
-              mimeType: mimeType,
-              data: base64Data
-            }
-          },
-          {
-            text: `Analisislah gambar struk belanja, nota kasir, tagihan (invoice), struk restoran, atau tanda terima pembayaran ini secara detail.
+        contents: {
+          parts: [
+            {
+              inlineData: {
+                mimeType: mimeType,
+                data: base64Data
+              }
+            },
+            {
+              text: `Analisislah gambar struk belanja, nota kasir, tagihan (invoice), struk restoran, atau tanda terima pembayaran ini secara detail.
 Tugas Anda adalah mengekstrak informasi keuangan penting berikut:
 1. "merchantName": Nama toko, minimarket, supermarket, restoran, kafe, atau tempat transaksi lainnya. Cari nama/logo paling besar di bagian atas struk (misalnya Alfamart, Indomaret, Starbucks, McDonald's, Superindo, dll.). Berikan tebakan terbaik jika tidak terbaca jelas. Jangan gunakan kata umum jika nama spesifik tersedia.
 2. "amount": Cari nominal grand total (jumlah keseluruhan yang benar-benar dibayarkan oleh pelanggan setelah diskon atau pajak). Abaikan harga per item, cari angka paling akhir yang biasanya berada di samping tulisan "TOTAL", "GRAND TOTAL", "CASH", "TUNAI", "KARTU", "NETTO", "JUMLAH BAYAR", "RP", atau sejenisnya. Pastikan nilainya berupa ANGKA BULAT SAJA (integer) tanpa desimal, titik, koma, maupun Rp (contoh: 42500).
@@ -993,8 +994,9 @@ Tugas Anda adalah mengekstrak informasi keuangan penting berikut:
 4. "notes": Rangkum barang-barang yang dibeli secara singkat (contoh: "Membeli minyak goreng, roti, dan susu" atau "Makan siang ramen & ocha").
 
 PENTING: Jawab dalam format JSON yang valid sesuai skema yang diminta tanpa ada teks penjelasan lainnya.`
-          }
-        ],
+            }
+          ]
+        },
         config: {
           responseMimeType: 'application/json',
           responseSchema: {
@@ -1036,13 +1038,16 @@ PENTING: Jawab dalam format JSON yang valid sesuai skema yang diminta tanpa ada 
       res.json(result);
     } catch (err: any) {
       console.error('Receipt scan error:', err);
-      // Elegant fallback if GEMINI_API_KEY is missing or the call fails
-      res.status(200).json({
-        merchantName: 'Alfamart Gatsu (Simulasi)',
-        amount: 42500,
-        category: 'Belanja Bulanan',
-        notes: 'Pencatatan otomatis via simulasi struk belanja (Gemini offline/tidak aktif).'
-      });
+      // Only fallback if GEMINI_API_KEY is missing, otherwise return actual error to the frontend
+      if (!process.env.GEMINI_API_KEY) {
+        return res.json({
+          merchantName: 'Alfamart Gatsu (Simulasi)',
+          amount: 42500,
+          category: 'Belanja Bulanan',
+          notes: 'Pencatatan otomatis via simulasi struk belanja (Gemini offline/tidak aktif).'
+        });
+      }
+      res.status(500).json({ error: `Gagal memindai struk via Gemini AI: ${err.message || err}` });
     }
   });
 

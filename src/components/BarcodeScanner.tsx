@@ -175,7 +175,8 @@ export default function BarcodeScanner({ onScanComplete, onInstantSave, creditCa
       });
 
       if (!response.ok) {
-        throw new Error('Server mengembalikan respon error.');
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || 'Server mengembalikan respon error.');
       }
 
       const data = await response.json();
@@ -331,7 +332,7 @@ export default function BarcodeScanner({ onScanComplete, onInstantSave, creditCa
           </motion.div>
         )}
 
-        {/* Processing State */}
+         {/* Processing State */}
         {scanningStatus === 'processing' && (
           <motion.div
             key="processing"
@@ -348,6 +349,34 @@ export default function BarcodeScanner({ onScanComplete, onInstantSave, creditCa
             
             <h5 className="font-semibold text-slate-800 text-sm mb-1 animate-pulse">AI Sedang Memproses Struk...</h5>
             <p className="text-xs text-slate-400 max-w-xs text-center">Gemini AI sedang membaca foto struk belanja Anda untuk mendeteksi merchant, nominal harga, dan barang-barang.</p>
+          </motion.div>
+        )}
+
+        {/* Error State View */}
+        {scanningStatus === 'error' && (
+          <motion.div
+            key="error"
+            initial={{ opacity: 0, scale: 0.98 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0 }}
+            className="bg-red-50/50 border border-red-200 rounded-xl p-6 flex flex-col items-center justify-center text-center min-h-[220px]"
+          >
+            <div className="w-12 h-12 bg-red-100 text-red-600 rounded-full flex items-center justify-center mb-3">
+              <AlertCircle className="w-6 h-6" />
+            </div>
+            
+            <h5 className="font-semibold text-slate-800 text-sm mb-1.5 font-display">Gagal Memindai Struk</h5>
+            <p className="text-xs text-red-600 max-w-xs mb-4">
+              {errorMessage || 'Terjadi kesalahan saat memproses gambar struk belanja Anda.'}
+            </p>
+            
+            <button
+              type="button"
+              onClick={resetScanner}
+              className="flex items-center gap-1.5 px-4 py-2 bg-slate-800 hover:bg-slate-900 text-white font-semibold text-xs rounded-lg transition cursor-pointer"
+            >
+              <RefreshCw className="w-3.5 h-3.5" /> Pindai Ulang / Coba Lagi
+            </button>
           </motion.div>
         )}
 
