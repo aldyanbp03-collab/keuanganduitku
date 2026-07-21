@@ -22,7 +22,7 @@ import {
   Check, 
   ArrowRight, 
   Scan, 
-  Barcode,
+  Receipt,
   FileText, 
   Info,
   Menu
@@ -102,7 +102,7 @@ export default function App() {
   const [expenseCategory, setExpenseCategory] = useState('');
   const [expenseSource, setExpenseSource] = useState('Cash');
   const [expenseNote, setExpenseNote] = useState('');
-  const [expenseInputMethod, setExpenseInputMethod] = useState<'manual' | 'barcode'>('manual');
+  const [expenseInputMethod, setExpenseInputMethod] = useState<'manual' | 'receipt'>('manual');
 
   // Income form state
   const [incomeTitle, setIncomeTitle] = useState('');
@@ -131,6 +131,20 @@ export default function App() {
       try {
         const headers = { 'Authorization': `Bearer ${token}` };
         
+        const handleResponse = async (r: Response) => {
+          if (r.status === 401) {
+            localStorage.removeItem('dk_token');
+            localStorage.removeItem('dk_user');
+            setToken(null);
+            setUser(null);
+            return null;
+          }
+          if (!r.ok) {
+            throw new Error(`HTTP error! status: ${r.status}`);
+          }
+          return r.json();
+        };
+
         const [
           resTx,
           resGoals,
@@ -140,14 +154,26 @@ export default function App() {
           resNotifs,
           resSettings
         ] = await Promise.all([
-          fetch('/api/transactions', { headers }).then(r => r.ok ? r.json() : Promise.reject(r)),
-          fetch('/api/saving-goals', { headers }).then(r => r.ok ? r.json() : Promise.reject(r)),
-          fetch('/api/credit-cards', { headers }).then(r => r.ok ? r.json() : Promise.reject(r)),
-          fetch('/api/family-members', { headers }).then(r => r.ok ? r.json() : Promise.reject(r)),
-          fetch('/api/categories', { headers }).then(r => r.ok ? r.json() : Promise.reject(r)),
-          fetch('/api/notifications', { headers }).then(r => r.ok ? r.json() : Promise.reject(r)),
-          fetch('/api/settings', { headers }).then(r => r.ok ? r.json() : Promise.reject(r))
+          fetch('/api/transactions', { headers }).then(handleResponse),
+          fetch('/api/saving-goals', { headers }).then(handleResponse),
+          fetch('/api/credit-cards', { headers }).then(handleResponse),
+          fetch('/api/family-members', { headers }).then(handleResponse),
+          fetch('/api/categories', { headers }).then(handleResponse),
+          fetch('/api/notifications', { headers }).then(handleResponse),
+          fetch('/api/settings', { headers }).then(handleResponse)
         ]);
+
+        if (
+          resTx === null ||
+          resGoals === null ||
+          resCards === null ||
+          resMembers === null ||
+          resCats === null ||
+          resNotifs === null ||
+          resSettings === null
+        ) {
+          return;
+        }
 
         if (Array.isArray(resTx)) setTransactions(resTx);
         if (Array.isArray(resGoals)) setSavingGoals(resGoals);
@@ -157,7 +183,7 @@ export default function App() {
         if (Array.isArray(resNotifs)) setNotifications(resNotifs);
         if (resSettings && !resSettings.error) setSettings(resSettings);
       } catch (err) {
-        console.error('Failed to load data from server. Falling back to local values.', err);
+        console.warn('Gagal memuat data dari server atau sesi telah berakhir. Kembali menggunakan setelan lokal.', err);
       } finally {
         setIsLoading(false);
       }
@@ -801,7 +827,7 @@ export default function App() {
     setWorkflowStep('completed');
   };
 
-  const handleBarcodeScanComplete = (extracted: { title: string; amount: number; category: string; note: string }) => {
+  const handleReceiptScanComplete = (extracted: { title: string; amount: number; category: string; note: string }) => {
     setExpenseTitle(extracted.title);
     setExpenseAmount(extracted.amount.toString());
     setExpenseCategory(extracted.category);
@@ -831,7 +857,7 @@ export default function App() {
     // Trigger Notification
     triggerNotification(
       'Pencatatan Instan Berhasil',
-      `Pengeluaran "${extracted.title}" sebesar ${formatIDR(extracted.amount)} berhasil dicatat langsung via Barcode AI ke database.`,
+      `Pengeluaran "${extracted.title}" sebesar ${formatIDR(extracted.amount)} berhasil dicatat langsung via AI Scan Struk ke database.`,
       'success'
     );
   };
@@ -1266,18 +1292,18 @@ export default function App() {
                 </button>
                 <button
                   type="button"
-                  onClick={() => setExpenseInputMethod('barcode')}
-                  className={`px-4 py-2 text-xs font-semibold border-b-2 -mb-px transition-all flex items-center gap-1.5 ${expenseInputMethod === 'barcode' ? 'border-rose-500 text-rose-600 font-bold' : 'border-transparent text-slate-400 hover:text-slate-700'}`}
+                  onClick={() => setExpenseInputMethod('receipt')}
+                  className={`px-4 py-2 text-xs font-semibold border-b-2 -mb-px transition-all flex items-center gap-1.5 ${expenseInputMethod === 'receipt' ? 'border-rose-500 text-rose-600 font-bold' : 'border-transparent text-slate-400 hover:text-slate-700'}`}
                 >
-                  <Barcode className="w-3.5 h-3.5 animate-pulse" /> Scan Barcode AI
+                  <Receipt className="w-3.5 h-3.5 animate-pulse" /> Scan Struk AI
                 </button>
               </div>
 
               {/* Render Selected Input Tab */}
               <div className="p-5 modal-form-scrollable">
-                {expenseInputMethod === 'barcode' ? (
+                {expenseInputMethod === 'receipt' ? (
                   <BarcodeScanner 
-                    onScanComplete={handleBarcodeScanComplete} 
+                    onScanComplete={handleReceiptScanComplete} 
                     onInstantSave={handleInstantSaveExpense}
                     creditCards={creditCards}
                   />

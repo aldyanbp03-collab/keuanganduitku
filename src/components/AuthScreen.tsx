@@ -3,9 +3,9 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
-import { Wallet, ShieldCheck, Mail, Lock, User, ArrowRight } from 'lucide-react';
+import { Wallet, ShieldCheck, Mail, Lock, User, ArrowRight, Check, Users } from 'lucide-react';
 
 interface AuthScreenProps {
   onLoginSuccess: (
@@ -22,6 +22,24 @@ export default function AuthScreen({ onLoginSuccess }: AuthScreenProps) {
   const [customError, setCustomError] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
   const [loading, setLoading] = useState(false);
+  const [registeredUsers, setRegisteredUsers] = useState<any[]>([]);
+
+  useEffect(() => {
+    const fetchRegisteredUsers = async () => {
+      try {
+        const response = await fetch('/api/auth/users');
+        if (response.ok) {
+          const data = await response.json();
+          setRegisteredUsers(Array.isArray(data) ? data : []);
+        }
+      } catch (err) {
+        console.error('Failed to fetch registered users from database:', err);
+      }
+    };
+    if (authMode === 'login') {
+      fetchRegisteredUsers();
+    }
+  }, [authMode]);
 
   const handleFormSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -132,6 +150,52 @@ export default function AuthScreen({ onLoginSuccess }: AuthScreenProps) {
                 <div className="mb-4 p-3 bg-emerald-950/40 border border-emerald-900/60 text-emerald-300 text-xs rounded-xl flex items-center gap-2">
                   <CheckCircleIcon />
                   <span>{successMsg}</span>
+                </div>
+              )}
+
+              {registeredUsers.length > 0 && (
+                <div className="mb-5 p-4 bg-slate-900/45 border border-slate-700/50 rounded-xl">
+                  <div className="flex items-center gap-1.5 mb-2.5">
+                    <Users className="w-4 h-4 text-emerald-400" />
+                    <span className="text-xs font-bold text-slate-300 uppercase tracking-wider">Akun Terdaftar di Aplikasi</span>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-40 overflow-y-auto pr-1">
+                    {registeredUsers.map((u) => {
+                      const isSelected = email.toLowerCase().trim() === u.email.toLowerCase().trim();
+                      return (
+                        <button
+                          key={u.id}
+                          type="button"
+                          onClick={() => setEmail(u.email)}
+                          className={`flex items-center gap-2.5 p-2 rounded-lg border text-left transition duration-200 cursor-pointer min-w-0 ${
+                            isSelected
+                              ? 'bg-emerald-500/10 border-emerald-500 text-white shadow-sm'
+                              : 'bg-slate-800/40 border-slate-700/50 text-slate-300 hover:bg-slate-800/80 hover:border-slate-600'
+                          }`}
+                        >
+                          <div className="relative shrink-0">
+                            <img
+                              src={u.avatarUrl || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80'}
+                              alt={u.name}
+                              referrerPolicy="no-referrer"
+                              className={`w-8 h-8 rounded-full object-cover border-2 ${
+                                isSelected ? 'border-emerald-400' : 'border-slate-600'
+                              }`}
+                            />
+                            {isSelected && (
+                              <div className="absolute -bottom-1 -right-1 bg-emerald-500 text-slate-950 rounded-full p-0.5 border border-slate-900 shadow-md">
+                                <Check className="w-2 h-2 stroke-[3]" />
+                              </div>
+                            )}
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <p className="text-xs font-bold truncate leading-tight">{u.name}</p>
+                            <p className="text-[10px] text-slate-400 truncate leading-none mt-0.5">{u.email}</p>
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
               )}
 

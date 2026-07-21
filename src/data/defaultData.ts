@@ -35,9 +35,9 @@ export const DEFAULT_CREDIT_CARDS: CreditCard[] = [
 ];
 
 export const DEFAULT_FAMILY_MEMBERS: FamilyMember[] = [
-  { id: 'fam-1', name: 'Rian (Ayah)', monthlyLimit: 8000000, monthlySpent: 3500000, avatarUrl: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=150&auto=format&fit=crop&q=80' },
-  { id: 'fam-2', name: 'Siti (Ibu)', monthlyLimit: 10000000, monthlySpent: 4200000, avatarUrl: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150&auto=format&fit=crop&q=80' },
-  { id: 'fam-3', name: 'Adit (Anak)', monthlyLimit: 1500000, monthlySpent: 850000, avatarUrl: 'https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?w=150&auto=format&fit=crop&q=80' }
+  { id: 'fam-1', name: 'Rian (Ayah)', role: 'Orang Tua', monthlyLimit: 8000000, monthlySpent: 3500000, avatarUrl: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=150&auto=format&fit=crop&q=80' },
+  { id: 'fam-2', name: 'Siti (Ibu)', role: 'Orang Tua', monthlyLimit: 10000000, monthlySpent: 4200000, avatarUrl: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150&auto=format&fit=crop&q=80' },
+  { id: 'fam-3', name: 'Adit (Anak)', role: 'Anak', monthlyLimit: 1500000, monthlySpent: 850000, avatarUrl: 'https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?w=150&auto=format&fit=crop&q=80' }
 ];
 
 export const DEFAULT_TRANSACTIONS: Transaction[] = [

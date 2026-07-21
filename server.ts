@@ -209,9 +209,9 @@ async function seedUserData(userId: string) {
   ];
 
   const DEFAULT_FAMILY_MEMBERS = [
-    { id: 'fam-1', name: 'Rian (Ayah)', monthlyLimit: 8000000, monthlySpent: 3500000, avatarUrl: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=150&auto=format&fit=crop&q=80' },
-    { id: 'fam-2', name: 'Siti (Ibu)', monthlyLimit: 10000000, monthlySpent: 4200000, avatarUrl: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150&auto=format&fit=crop&q=80' },
-    { id: 'fam-3', name: 'Adit (Anak)', monthlyLimit: 1500000, monthlySpent: 850000, avatarUrl: 'https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?w=150&auto=format&fit=crop&q=80' }
+    { id: 'fam-1', name: 'Rian (Ayah)', role: 'Orang Tua', monthlyLimit: 8000000, monthlySpent: 3500000, avatarUrl: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=150&auto=format&fit=crop&q=80' },
+    { id: 'fam-2', name: 'Siti (Ibu)', role: 'Orang Tua', monthlyLimit: 10000000, monthlySpent: 4200000, avatarUrl: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150&auto=format&fit=crop&q=80' },
+    { id: 'fam-3', name: 'Adit (Anak)', role: 'Anak', monthlyLimit: 1500000, monthlySpent: 850000, avatarUrl: 'https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?w=150&auto=format&fit=crop&q=80' }
   ];
 
   const DEFAULT_TRANSACTIONS = [
@@ -285,7 +285,8 @@ async function purgeDemoData() {
 }
 
 const app = express();
-app.use(express.json());
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ limit: '10mb', extended: true }));
 
 let initialized = false;
 let initPromise: Promise<void> | null = null;
@@ -947,8 +948,8 @@ const requireAuth = async (req: express.Request, res: express.Response, next: ex
     return aiClient;
   };
 
-  // AI Barcode Scanner endpoint
-  app.post('/api/scan-barcode', requireAuth, async (req, res) => {
+  // AI Receipt Scanner endpoint
+  app.post('/api/scan-receipt', requireAuth, async (req, res) => {
     const { image } = req.body;
     if (!image) {
       return res.status(400).json({ error: 'Gambar tidak boleh kosong.' });
@@ -975,7 +976,7 @@ const requireAuth = async (req: express.Request, res: express.Response, next: ex
             }
           },
           {
-            text: 'Analisislah gambar barcode produk ini (bisa berupa foto barcode saja, atau foto kemasan produk yang menampilkan barcode). Temukan nilai barcode jika memungkinkan, dan cari tahu produk apakah ini di Indonesia. Jika gambar tidak menyertakan barcode yang valid, analisis produk yang tampak pada gambar. Kembalikan data dalam format JSON dengan struktur yang tepat sesuai skema yang diminta.'
+            text: 'Analisislah gambar struk belanja, nota, tagihan, atau tanda terima ini. Temukan nama toko/merchant (nama toko), jumlah total harga yang dibayarkan (harga total belanja), kategori pengeluaran, dan berikan rincian singkat barang sebagai catatan. Kembalikan data dalam format JSON dengan struktur yang tepat sesuai skema yang diminta.'
           }
         ],
         config: {
@@ -983,17 +984,13 @@ const requireAuth = async (req: express.Request, res: express.Response, next: ex
           responseSchema: {
             type: Type.OBJECT,
             properties: {
-              productName: {
+              merchantName: {
                 type: Type.STRING,
-                description: 'Nama produk komplit yang terdeteksi atau diidentifikasi.'
+                description: 'Nama toko, restoran, atau nama merchant/tempat transaksi. Berikan tebakan terbaik jika kurang jelas.'
               },
-              barcode: {
-                type: Type.STRING,
-                description: '13-digit EAN barcode atau nilai barcode yang terdeteksi. Berikan null jika tidak terdeteksi.'
-              },
-              estimatedPrice: {
+              amount: {
                 type: Type.INTEGER,
-                description: 'Perkiraan harga wajar dalam Rupiah untuk produk ini di minimarket/supermarket Indonesia.'
+                description: 'Jumlah total nominal uang yang dibayarkan dalam Rupiah (grand total harga).'
               },
               category: {
                 type: Type.STRING,
@@ -1001,10 +998,10 @@ const requireAuth = async (req: express.Request, res: express.Response, next: ex
               },
               notes: {
                 type: Type.STRING,
-                description: 'Keterangan tambahan atau rincian spesifikasi produk.'
+                description: 'Rincian singkat atau ringkasan barang yang dibeli.'
               }
             },
-            required: ['productName', 'estimatedPrice', 'category', 'notes']
+            required: ['merchantName', 'amount', 'category', 'notes']
           }
         }
       });
@@ -1017,14 +1014,13 @@ const requireAuth = async (req: express.Request, res: express.Response, next: ex
       const result = JSON.parse(text.trim());
       res.json(result);
     } catch (err: any) {
-      console.error('Barcode scan error:', err);
+      console.error('Receipt scan error:', err);
       // Elegant fallback if GEMINI_API_KEY is missing or the call fails
       res.status(200).json({
-        productName: 'Aqua Botol 600ml (Simulasi)',
-        barcode: '8991001110023',
-        estimatedPrice: 3500,
-        category: 'Makanan & Minuman',
-        notes: 'Pencatatan otomatis via simulasi sensor barcode (Gemini offline/tidak aktif).'
+        merchantName: 'Alfamart Gatsu (Simulasi)',
+        amount: 42500,
+        category: 'Belanja Bulanan',
+        notes: 'Pencatatan otomatis via simulasi struk belanja (Gemini offline/tidak aktif).'
       });
     }
   });

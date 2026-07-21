@@ -8,14 +8,15 @@ import { motion, AnimatePresence } from 'motion/react';
 import { 
   Camera, 
   Upload, 
-  Barcode, 
+  Receipt, 
   CheckCircle2, 
   AlertCircle, 
   RefreshCw, 
   StopCircle,
   Database,
   Sliders,
-  CreditCard
+  CreditCard,
+  Edit2
 } from 'lucide-react';
 
 interface BarcodeScannerProps {
@@ -53,9 +54,8 @@ export default function BarcodeScanner({ onScanComplete, onInstantSave, creditCa
 
   // Scan result state
   const [scanResult, setScanResult] = useState<{
-    productName: string;
-    barcode: string;
-    estimatedPrice: number;
+    merchantName: string;
+    amount: number;
     category: string;
     notes: string;
   } | null>(null);
@@ -86,7 +86,7 @@ export default function BarcodeScanner({ onScanComplete, onInstantSave, creditCa
       console.error('Camera access error:', err);
       setHasCameraAccess(false);
       setScanningStatus('idle');
-      setErrorMessage('Gagal mengakses kamera. Silakan pilih opsi Unggah File Gambar.');
+      setErrorMessage('Gagal mengakses kamera. Silakan pilih opsi Unggah Foto Struk.');
     }
   };
 
@@ -165,7 +165,7 @@ export default function BarcodeScanner({ onScanComplete, onInstantSave, creditCa
     }
 
     try {
-      const response = await fetch('/api/scan-barcode', {
+      const response = await fetch('/api/scan-receipt', {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -175,18 +175,22 @@ export default function BarcodeScanner({ onScanComplete, onInstantSave, creditCa
       });
 
       if (!response.ok) {
-        throw new Error('Server returned an error status.');
+        throw new Error('Server mengembalikan respon error.');
       }
 
       const data = await response.json();
-      
-      setScanResult(data);
+      setScanResult({
+        merchantName: data.merchantName || 'Toko Tidak Dikenal',
+        amount: typeof data.amount === 'number' ? data.amount : 0,
+        category: data.category || 'Lain-lain',
+        notes: data.notes || ''
+      });
       setScanningStatus('success');
 
     } catch (err: any) {
-      console.error('Failed scanning barcode:', err);
+      console.error('Failed scanning receipt:', err);
       setScanningStatus('error');
-      setErrorMessage(err.message || 'Gagal memproses gambar barcode.');
+      setErrorMessage(err.message || 'Gagal memproses gambar struk belanja.');
     }
   };
 
@@ -205,10 +209,10 @@ export default function BarcodeScanner({ onScanComplete, onInstantSave, creditCa
     <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-6 shadow-xs">
       <div className="flex items-center gap-3 mb-4">
         <div className="p-2 bg-rose-100 text-rose-600 rounded-xl">
-          <Barcode className="w-5 h-5" />
+          <Receipt className="w-5 h-5" />
         </div>
         <div>
-          <h4 className="font-display font-semibold text-slate-800 text-sm">Pencatatan Instan via Barcode AI</h4>
+          <h4 className="font-display font-semibold text-slate-800 text-sm">Pencatatan Instan via AI Receipt Scanner</h4>
         </div>
       </div>
 
@@ -232,7 +236,7 @@ export default function BarcodeScanner({ onScanComplete, onInstantSave, creditCa
                   <Camera className="w-6 h-6" />
                 </div>
                 <span className="text-sm font-semibold text-slate-800">Gunakan Kamera</span>
-                <span className="text-xs text-slate-400 mt-1">Scan live dari kamera ponsel/laptop</span>
+                <span className="text-xs text-slate-400 mt-1">Ambil foto struk dari kamera ponsel/laptop</span>
               </button>
 
               <button
@@ -250,8 +254,8 @@ export default function BarcodeScanner({ onScanComplete, onInstantSave, creditCa
                 <div className="p-3 bg-rose-50 text-rose-500 rounded-full group-hover:bg-rose-100 transition duration-200 mb-3">
                   <Upload className="w-6 h-6" />
                 </div>
-                <span className="text-sm font-semibold text-slate-800">Unggah Foto Produk</span>
-                <span className="text-xs text-slate-400 mt-1">Pilih gambar kemasan atau barcode produk</span>
+                <span className="text-sm font-semibold text-slate-800">Unggah Foto Struk</span>
+                <span className="text-xs text-slate-400 mt-1">Pilih berkas struk atau nota belanja Anda</span>
               </button>
             </div>
 
@@ -269,7 +273,7 @@ export default function BarcodeScanner({ onScanComplete, onInstantSave, creditCa
               }`}
             >
               <p className="text-xs font-medium text-slate-500">
-                Atau seret & letakkan berkas gambar kemasan/barcode di sini
+                Atau seret & letakkan foto struk belanja Anda di sini
               </p>
             </div>
 
@@ -299,12 +303,9 @@ export default function BarcodeScanner({ onScanComplete, onInstantSave, creditCa
                 className="w-full h-full object-cover"
               />
               
-              {/* Overlay Laser Scan Guide */}
-              <div className="absolute inset-x-4 top-1/2 -translate-y-1/2 h-0.5 bg-red-500 shadow-[0_0_8px_#ef4444,0_0_15px_#ef4444] animate-pulse" />
-              
-              {/* Scan box borders */}
-              <div className="absolute inset-x-8 top-10 bottom-10 border-2 border-dashed border-white/40 rounded-lg flex items-center justify-center pointer-events-none">
-                <span className="text-[10px] text-white/80 bg-black/50 px-2 py-1 rounded-md font-mono uppercase tracking-widest">Arahkan Barcode</span>
+              {/* Scan Box / Overlay borders */}
+              <div className="absolute inset-x-12 top-6 bottom-6 border-2 border-dashed border-white/50 rounded-lg flex items-center justify-center pointer-events-none">
+                <span className="text-[10px] text-white/90 bg-black/60 px-2.5 py-1 rounded-md font-mono uppercase tracking-widest">Posisikan Struk Belanja</span>
               </div>
             </div>
 
@@ -322,11 +323,10 @@ export default function BarcodeScanner({ onScanComplete, onInstantSave, creditCa
                 onClick={resetScanner}
                 className="flex items-center gap-1.5 px-4 py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold text-xs rounded-xl transition cursor-pointer"
               >
-                <StopCircle className="w-4 h-4" /> Stop Kamera
+                <StopCircle className="w-4 h-4" /> Batal
               </button>
             </div>
 
-            {/* Hidden canvas for video capturing */}
             <canvas ref={canvasRef} className="hidden" />
           </motion.div>
         )}
@@ -346,58 +346,91 @@ export default function BarcodeScanner({ onScanComplete, onInstantSave, creditCa
               </div>
             </div>
             
-            <h5 className="font-semibold text-slate-800 text-sm mb-1 animate-pulse">AI Sedang Menganalisis...</h5>
-            <p className="text-xs text-slate-400 max-w-xs text-center">Gemini AI sedang memindai barcode, mengenali nama produk, serta memetakan kategori harga produk.</p>
+            <h5 className="font-semibold text-slate-800 text-sm mb-1 animate-pulse">AI Sedang Memproses Struk...</h5>
+            <p className="text-xs text-slate-400 max-w-xs text-center">Gemini AI sedang membaca foto struk belanja Anda untuk mendeteksi merchant, nominal harga, dan barang-barang.</p>
           </motion.div>
         )}
 
-        {/* Scan Success View */}
+        {/* Scan Success View (Editable Inputs) */}
         {scanningStatus === 'success' && scanResult && (
           <motion.div
             key="success"
             initial={{ opacity: 0, scale: 0.98 }}
             animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0 }}
-            className="bg-rose-50/50 border border-rose-200 rounded-xl p-5 space-y-4"
+            className="bg-rose-50/40 border border-rose-200 rounded-xl p-5 space-y-4"
           >
             <div className="flex items-start justify-between">
               <div className="flex items-center gap-2.5">
-                <CheckCircle2 className="w-5 h-5 text-rose-600 shrink-0" />
+                <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
                 <div>
-                  <span className="text-[9px] font-bold text-rose-800 uppercase bg-rose-100/80 px-2 py-0.5 rounded-full">AI Barcode Terdeteksi</span>
-                  <h5 className="font-semibold text-slate-800 text-sm mt-1 font-display">Produk Berhasil Diidentifikasi!</h5>
+                  <span className="text-[9px] font-bold text-emerald-800 uppercase bg-emerald-100 px-2 py-0.5 rounded-full">AI Berhasil Memindai</span>
+                  <h5 className="font-semibold text-slate-800 text-sm mt-1 font-display">Hasil Ekstraksi Struk Belanja</h5>
                 </div>
               </div>
               <button
                 type="button"
                 onClick={resetScanner}
-                className="text-xs text-slate-500 hover:text-slate-850 font-medium flex items-center gap-1 bg-white border border-slate-200 px-2.5 py-1 rounded-lg cursor-pointer"
+                className="text-xs text-slate-500 hover:text-slate-850 font-medium flex items-center gap-1 bg-white border border-slate-200 px-2.5 py-1 rounded-lg cursor-pointer shadow-3xs"
               >
-                <RefreshCw className="w-3 h-3" /> Scan Lagi
+                <RefreshCw className="w-3 h-3" /> Pindai Baru
               </button>
             </div>
 
-            <div className="bg-white border border-rose-100 rounded-xl p-4 grid grid-cols-2 gap-3.5 shadow-2xs">
+            <p className="text-[11px] text-slate-500 italic bg-slate-100 p-2 rounded-lg border border-slate-200/50 flex items-center gap-1.5">
+              <Edit2 className="w-3.5 h-3.5 text-slate-400 shrink-0" /> Anda dapat mengubah secara langsung hasil deteksi di bawah sebelum menyimpannya.
+            </p>
+
+            <div className="bg-white border border-rose-100 rounded-xl p-4 space-y-3.5 shadow-2xs">
               <div>
-                <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">Produk Terdeteksi</span>
-                <span className="text-xs font-bold text-slate-800 block truncate" title={scanResult.productName}>{scanResult.productName}</span>
+                <label className="block text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-1">Nama Toko / Merchant</label>
+                <input
+                  type="text"
+                  value={scanResult.merchantName}
+                  onChange={(e) => setScanResult({ ...scanResult, merchantName: e.target.value })}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs text-slate-850 font-semibold focus:border-rose-500 focus:outline-hidden transition"
+                />
               </div>
-              <div>
-                <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">Perkiraan Harga</span>
-                <span className="text-xs font-extrabold text-rose-600 font-sans whitespace-nowrap">Rp {scanResult.estimatedPrice.toLocaleString('id-ID')}</span>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-1">Total Belanja (Rp)</label>
+                  <input
+                    type="number"
+                    value={scanResult.amount || ''}
+                    onChange={(e) => setScanResult({ ...scanResult, amount: parseInt(e.target.value) || 0 })}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs text-slate-850 font-extrabold text-rose-600 focus:border-rose-500 focus:outline-hidden transition"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-1">Kategori Pengeluaran</label>
+                  <select
+                    value={scanResult.category}
+                    onChange={(e) => setScanResult({ ...scanResult, category: e.target.value })}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs text-slate-850 focus:border-rose-500 focus:outline-hidden transition"
+                  >
+                    <option value="Makanan & Minuman">Makanan & Minuman</option>
+                    <option value="Belanja Bulanan">Belanja Bulanan</option>
+                    <option value="Kesehatan">Kesehatan</option>
+                    <option value="Lain-lain">Lain-lain</option>
+                  </select>
+                </div>
               </div>
+
               <div>
-                <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">Kategori</span>
-                <span className="text-[10px] font-semibold bg-slate-100 px-2 py-0.5 rounded-md text-slate-600 inline-block mt-0.5">{scanResult.category}</span>
-              </div>
-              <div>
-                <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">No. Barcode (EAN)</span>
-                <span className="text-[11px] text-slate-500 block font-mono">{scanResult.barcode || 'Tidak Ada Barcode'}</span>
+                <label className="block text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-1">Catatan Rincian Belanja</label>
+                <input
+                  type="text"
+                  value={scanResult.notes}
+                  onChange={(e) => setScanResult({ ...scanResult, notes: e.target.value })}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs text-slate-850 focus:border-rose-500 focus:outline-hidden transition"
+                />
               </div>
             </div>
 
             {/* Payment Source Selection */}
-            <div className="bg-white border border-slate-200/60 rounded-xl p-4 space-y-2.5 shadow-2xs">
+            <div className="bg-white border border-slate-200/60 rounded-xl p-4 space-y-2 shadow-2xs">
               <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider">
                 Sumber Pembayaran (Pencatatan Instan)
               </label>
@@ -426,10 +459,10 @@ export default function BarcodeScanner({ onScanComplete, onInstantSave, creditCa
                 onClick={() => {
                   if (scanResult) {
                     onInstantSave({
-                      title: scanResult.productName,
-                      amount: scanResult.estimatedPrice,
+                      title: scanResult.merchantName,
+                      amount: scanResult.amount,
                       category: scanResult.category,
-                      note: `Pencatatan Instan via Barcode: [${scanResult.barcode || 'N/A'}]. ${scanResult.notes}`,
+                      note: `[AI Scan Struk] ${scanResult.notes}`,
                       paymentSource: localPaymentSource
                     });
                   }
@@ -444,10 +477,10 @@ export default function BarcodeScanner({ onScanComplete, onInstantSave, creditCa
                 onClick={() => {
                   if (scanResult) {
                     onScanComplete({
-                      title: scanResult.productName,
-                      amount: scanResult.estimatedPrice,
+                      title: scanResult.merchantName,
+                      amount: scanResult.amount,
                       category: scanResult.category,
-                      note: `Barcode Terdeteksi: [${scanResult.barcode || 'N/A'}]. ${scanResult.notes}`
+                      note: `[AI Scan Struk] ${scanResult.notes}`
                     });
                   }
                 }}
