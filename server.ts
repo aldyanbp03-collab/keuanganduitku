@@ -7,6 +7,7 @@ import { getApps, initializeApp, getApp, cert } from 'firebase-admin/app';
 import { getFirestore } from 'firebase-admin/firestore';
 import { createServer as createViteServer } from 'vite';
 import { GoogleGenAI, Type } from '@google/genai';
+import { serviceAccount } from './firebase-service-account.js';
 
 const PORT = 3000;
 
@@ -126,13 +127,24 @@ async function initializeFirebase() {
         projectId: projectId,
       };
 
+      let hasSA = false;
       if (process.env.FIREBASE_SERVICE_ACCOUNT) {
         try {
           const sa = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
           initConfig.credential = cert(sa);
+          hasSA = true;
           console.log('Using Firebase Service Account from environment variables.');
         } catch (e) {
           console.error('Error parsing FIREBASE_SERVICE_ACCOUNT env var:', e);
+        }
+      }
+
+      if (!hasSA && serviceAccount) {
+        try {
+          initConfig.credential = cert(serviceAccount as any);
+          console.log('Using fallback Firebase Service Account from firebase-service-account.ts.');
+        } catch (e) {
+          console.error('Error using fallback service account:', e);
         }
       }
 
