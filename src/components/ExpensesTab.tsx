@@ -197,7 +197,7 @@ export default function ExpensesTab({
             <div className="flex items-center justify-between mb-4">
               <div>
                 <h4 className="font-display font-bold text-slate-800 text-sm">Anggaran Belanja Bulanan</h4>
-                <p className="text-[10px] text-slate-400 font-semibold tracking-wider uppercase">Planing batas maksimal</p>
+                <p className="text-xs text-slate-500 font-normal mt-0.5">Planning batas maksimal pengeluaran</p>
               </div>
               
               <button
@@ -301,12 +301,14 @@ export default function ExpensesTab({
 
       {/* RECENTLY RECORDED EXPENSES PREVIEW - Log Belanja Terakhir - Highly Polished & Clickable */}
       <div className="bg-white border border-slate-200/80 rounded-2xl p-4 sm:p-5 shadow-xs">
-        <div className="flex items-center justify-between pb-3 border-b border-slate-105 mb-3">
-          <div>
-            <h4 className="font-display font-bold text-slate-800 text-sm">Log Belanja Terakhir</h4>
-            <p className="text-xs text-slate-500 font-normal mt-0.5">Histori pengeluaran yang tercatat di sistem</p>
+        <div className="flex items-center justify-between gap-3 pb-3 border-b border-slate-100 mb-3">
+          <div className="min-w-0">
+            <h4 className="font-display font-bold text-slate-800 text-sm truncate">Log Belanja Terakhir</h4>
+            <p className="text-xs text-slate-500 font-normal mt-0.5 truncate">Histori pengeluaran yang tercatat di sistem</p>
           </div>
-          <span className="text-xs font-medium text-slate-500 bg-slate-100 px-2.5 py-1 rounded-full">Total: {expensesList.length} Transaksi</span>
+          <span className="text-xs font-semibold text-slate-600 bg-slate-100 px-3 py-1 rounded-full shrink-0 whitespace-nowrap">
+            {expensesList.length} Transaksi
+          </span>
         </div>
 
         {expensesList.length === 0 ? (
