@@ -119,7 +119,7 @@ export default function SavingsTab({
             <PiggyBank className="w-7 h-7 text-emerald-600" /> Kelola Sasaran Tabungan
           </h2>
           <p className="text-xs sm:text-sm text-slate-500">
-            Wujudkan impian masa depan keluarga dengan menyisihkan anggaran secara berkala.
+            Wujudkan impian masa depan Anda dengan menyisihkan anggaran secara berkala.
           </p>
         </div>
         

@@ -22,7 +22,6 @@ import { Transaction, Category } from '../types';
 
 interface TransactionsTabProps {
   transactions: Transaction[];
-  familyMembers: any[];
   categories: Category[];
   onDeleteTransaction: (id: string) => void;
   onSelectTransaction?: (tx: Transaction) => void;

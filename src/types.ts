@@ -8,7 +8,6 @@ export interface UserProfile {
   name: string;
   email: string;
   avatarUrl: string;
-  familyId?: string;
   currency: string;
 }
 
@@ -23,7 +22,6 @@ export interface Transaction {
   date: string;
   note?: string;
   paymentSource: string; // 'Cash', 'Debit', or Card ID / Saving Goal ID
-  familyMemberId?: string; // ID of family member who made/associated with the transaction
   relatedSavingGoalId?: string; // If transaction is a transfer to/from savings
   relatedCreditCardId?: string; // If transaction is charged to or a payment of a credit card
 }
@@ -45,15 +43,6 @@ export interface CreditCard {
   usedAmount: number;
   dueDate: string; // e.g., "Tanggal 15" or "2026-08-15"
   color: string; // Tailwind color class for card bg
-}
-
-export interface FamilyMember {
-  id: string;
-  name: string;
-  role: 'Orang Tua' | 'Anak' | 'Lainnya';
-  avatarUrl: string;
-  monthlyLimit?: number; // Optional monthly limit for kids
-  monthlySpent: number;
 }
 
 export interface Category {

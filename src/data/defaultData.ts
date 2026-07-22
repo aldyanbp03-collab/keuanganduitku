@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { Category, SavingGoal, CreditCard, FamilyMember, Transaction, NotificationItem, AppSettings } from '../types';
+import { Category, SavingGoal, CreditCard, Transaction, NotificationItem, AppSettings } from '../types';
 
 export const DEFAULT_CATEGORIES: Category[] = [
   // Income
@@ -34,21 +34,15 @@ export const DEFAULT_CREDIT_CARDS: CreditCard[] = [
   { id: 'card-2', cardName: 'Mandiri Signature', lastFourDigits: '8765', limitAmount: 30000000, usedAmount: 1200000, dueDate: 'Tiap Tanggal 20', color: 'from-slate-800 to-slate-950' }
 ];
 
-export const DEFAULT_FAMILY_MEMBERS: FamilyMember[] = [
-  { id: 'fam-1', name: 'Rian (Ayah)', role: 'Orang Tua', monthlyLimit: 8000000, monthlySpent: 3500000, avatarUrl: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=150&auto=format&fit=crop&q=80' },
-  { id: 'fam-2', name: 'Siti (Ibu)', role: 'Orang Tua', monthlyLimit: 10000000, monthlySpent: 4200000, avatarUrl: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150&auto=format&fit=crop&q=80' },
-  { id: 'fam-3', name: 'Adit (Anak)', role: 'Anak', monthlyLimit: 1500000, monthlySpent: 850000, avatarUrl: 'https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?w=150&auto=format&fit=crop&q=80' }
-];
-
 export const DEFAULT_TRANSACTIONS: Transaction[] = [
-  { id: 'tx-1', title: 'Gaji Bulanan PT ABC', amount: 15000000, type: 'income', category: 'Gaji', date: new Date().toISOString().split('T')[0], note: 'Gaji pokok bulanan', paymentSource: 'Debit', familyMemberId: 'fam-1' },
-  { id: 'tx-2', title: 'Belanja Bulanan Superindo', amount: 1250000, type: 'expense', category: 'Belanja Bulanan', date: new Date().toISOString().split('T')[0], note: 'Kebutuhan pokok dapur', paymentSource: 'Debit', familyMemberId: 'fam-2' },
-  { id: 'tx-3', title: 'Starbucks Coffee', amount: 85000, type: 'expense', category: 'Makanan & Minuman', date: new Date().toISOString().split('T')[0], note: 'Kopi sore santai', paymentSource: 'card-1', familyMemberId: 'fam-1', relatedCreditCardId: 'card-1' },
-  { id: 'tx-4', title: 'Alokasi DP Rumah Baru', amount: 5000000, type: 'expense', category: 'Lain-lain', date: new Date().toISOString().split('T')[0], note: 'Transfer bulanan ke tabungan impian', paymentSource: 'Debit', familyMemberId: 'fam-1', relatedSavingGoalId: 'goal-1' }
+  { id: 'tx-1', title: 'Gaji Bulanan PT ABC', amount: 15000000, type: 'income', category: 'Gaji', date: new Date().toISOString().split('T')[0], note: 'Gaji pokok bulanan', paymentSource: 'Cash' },
+  { id: 'tx-2', title: 'Belanja Bulanan Superindo', amount: 1250000, type: 'expense', category: 'Belanja Bulanan', date: new Date().toISOString().split('T')[0], note: 'Kebutuhan pokok dapur', paymentSource: 'Cash' },
+  { id: 'tx-3', title: 'Starbucks Coffee', amount: 85000, type: 'expense', category: 'Makanan & Minuman', date: new Date().toISOString().split('T')[0], note: 'Kopi sore santai', paymentSource: 'card-1', relatedCreditCardId: 'card-1' },
+  { id: 'tx-4', title: 'Alokasi DP Rumah Baru', amount: 5000000, type: 'expense', category: 'Lain-lain', date: new Date().toISOString().split('T')[0], note: 'Transfer bulanan ke tabungan impian', paymentSource: 'Debit', relatedSavingGoalId: 'goal-1' }
 ];
 
 export const DEFAULT_NOTIFICATIONS: NotificationItem[] = [
-  { id: 'notif-1', title: 'Registrasi Berhasil', message: 'Selamat datang di DompetKita! Atur sasaran tabungan dan anggaran bulanan keluarga Anda sekarang.', date: new Date().toISOString().split('T')[0], read: false, type: 'success' }
+  { id: 'notif-1', title: 'Registrasi Berhasil', message: 'Selamat datang di DompetKita! Atur sasaran tabungan dan anggaran bulanan Anda sekarang.', date: new Date().toISOString().split('T')[0], read: false, type: 'success' }
 ];
 
 export const DEFAULT_SETTINGS: AppSettings = {

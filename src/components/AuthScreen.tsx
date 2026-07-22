@@ -9,7 +9,7 @@ import { Wallet, ShieldCheck, Mail, Lock, User, ArrowRight, Check, Users } from 
 
 interface AuthScreenProps {
   onLoginSuccess: (
-    user: { name: string; email: string; avatarUrl: string; selectedMemberId: string },
+    user: { name: string; email: string; avatarUrl: string },
     token: string
   ) => void;
 }
@@ -124,7 +124,7 @@ export default function AuthScreen({ onLoginSuccess }: AuthScreenProps) {
             Dompet<span className="text-emerald-400">Kita</span>
           </h1>
           <p className="text-slate-400 text-sm mt-2">
-            Pengelolaan Keuangan Pribadi & Keluarga secara Terintegrasi
+            Pengelolaan Keuangan Pribadi secara Terintegrasi
           </p>
         </div>
 
@@ -263,7 +263,7 @@ export default function AuthScreen({ onLoginSuccess }: AuthScreenProps) {
           {authMode === 'register' && (
             <>
               <h2 className="font-display font-bold text-xl text-white mb-1">Daftar Akun Baru</h2>
-              <p className="text-slate-400 text-xs mb-6">Mulai kelola tabungan bersama keluarga Anda secara sehat.</p>
+              <p className="text-slate-400 text-xs mb-6">Mulai kelola tabungan Anda secara terencana.</p>
 
               {customError && (
                 <div className="mb-4 p-3 bg-red-950/40 border border-red-900/60 text-red-300 text-xs rounded-xl flex items-center gap-2">

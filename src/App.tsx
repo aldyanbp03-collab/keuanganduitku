@@ -9,7 +9,6 @@ import {
   Wallet, 
   PiggyBank, 
   CreditCard as CardIcon, 
-  Users, 
   Settings as SettingsIcon, 
   History, 
   Bell, 
@@ -33,7 +32,6 @@ import {
   Transaction, 
   SavingGoal, 
   CreditCard, 
-  FamilyMember, 
   Category, 
   NotificationItem, 
   AppSettings 
@@ -43,7 +41,6 @@ import {
   DEFAULT_CATEGORIES, 
   DEFAULT_SAVING_GOALS, 
   DEFAULT_CREDIT_CARDS, 
-  DEFAULT_FAMILY_MEMBERS, 
   DEFAULT_TRANSACTIONS, 
   DEFAULT_NOTIFICATIONS, 
   DEFAULT_SETTINGS 
@@ -66,7 +63,7 @@ export default function App() {
     return localStorage.getItem('dk_token');
   });
 
-  const [user, setUser] = useState<{ name: string; email: string; avatarUrl: string; selectedMemberId: string } | null>(() => {
+  const [user, setUser] = useState<{ name: string; email: string; avatarUrl: string } | null>(() => {
     const saved = localStorage.getItem('dk_user');
     return saved ? JSON.parse(saved) : null;
   });
@@ -74,7 +71,6 @@ export default function App() {
   const [transactions, setTransactions] = useState<Transaction[]>(DEFAULT_TRANSACTIONS);
   const [savingGoals, setSavingGoals] = useState<SavingGoal[]>(DEFAULT_SAVING_GOALS);
   const [creditCards, setCreditCards] = useState<CreditCard[]>(DEFAULT_CREDIT_CARDS);
-  const [familyMembers, setFamilyMembers] = useState<FamilyMember[]>(DEFAULT_FAMILY_MEMBERS);
   const [categories, setCategories] = useState<Category[]>(DEFAULT_CATEGORIES);
   const [notifications, setNotifications] = useState<NotificationItem[]>(DEFAULT_NOTIFICATIONS);
   const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
@@ -149,7 +145,6 @@ export default function App() {
           resTx,
           resGoals,
           resCards,
-          resMembers,
           resCats,
           resNotifs,
           resSettings
@@ -157,7 +152,6 @@ export default function App() {
           fetch('/api/transactions', { headers }).then(handleResponse),
           fetch('/api/saving-goals', { headers }).then(handleResponse),
           fetch('/api/credit-cards', { headers }).then(handleResponse),
-          fetch('/api/family-members', { headers }).then(handleResponse),
           fetch('/api/categories', { headers }).then(handleResponse),
           fetch('/api/notifications', { headers }).then(handleResponse),
           fetch('/api/settings', { headers }).then(handleResponse)
@@ -167,7 +161,6 @@ export default function App() {
           resTx === null ||
           resGoals === null ||
           resCards === null ||
-          resMembers === null ||
           resCats === null ||
           resNotifs === null ||
           resSettings === null
@@ -178,7 +171,6 @@ export default function App() {
         if (Array.isArray(resTx)) setTransactions(resTx);
         if (Array.isArray(resGoals)) setSavingGoals(resGoals);
         if (Array.isArray(resCards)) setCreditCards(resCards);
-        if (Array.isArray(resMembers)) setFamilyMembers(resMembers);
         if (Array.isArray(resCats)) setCategories(resCats);
         if (Array.isArray(resNotifs)) setNotifications(resNotifs);
         if (resSettings && !resSettings.error) setSettings(resSettings);
@@ -304,19 +296,6 @@ export default function App() {
       });
     } catch (e) {
       console.error('Credit card delete sync error:', e);
-    }
-  };
-
-  const syncFamilyMember = async (member: FamilyMember) => {
-    if (!token) return;
-    try {
-      await fetch(`/api/family-members/${member.id}`, {
-        method: 'PUT',
-        headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify(member)
-      });
-    } catch (e) {
-      console.error('Family member sync error:', e);
     }
   };
 
@@ -446,7 +425,6 @@ export default function App() {
     setTransactions([]);
     setSavingGoals([]);
     setCreditCards([]);
-    setFamilyMembers([]);
     setCategories([]);
     setNotifications([]);
     setSettings(DEFAULT_SETTINGS);
@@ -459,35 +437,6 @@ export default function App() {
     
     setTransactions(prev => [txWithId, ...prev]);
     syncAddTransaction(txWithId);
-
-    // Update family member's spending if it's an expense and associated with a member
-    if (newTx.type === 'expense' && newTx.familyMemberId) {
-      setFamilyMembers(prev => prev.map(member => {
-        if (member.id === newTx.familyMemberId) {
-          const updatedSpent = member.monthlySpent + newTx.amount;
-          const updatedMember = { ...member, monthlySpent: updatedSpent };
-          syncFamilyMember(updatedMember);
-          
-          // Trigger Budget limits threshold check
-          if (member.monthlyLimit && updatedSpent > member.monthlyLimit) {
-            triggerNotification(
-              'Batas Limit Terlampaui!',
-              `Pengeluaran ${member.name} telah melebihi batas bulanan (${formatIDR(updatedSpent)} / ${formatIDR(member.monthlyLimit)}).`,
-              'alert'
-            );
-          } else if (member.monthlyLimit && updatedSpent >= (member.monthlyLimit * (settings.budgetWarningLimit / 100))) {
-            triggerNotification(
-              'Limit Anggaran Mendekati Batas',
-              `Pengeluaran ${member.name} telah mencapai ${settings.budgetWarningLimit}% dari alokasi limit bulanan.`,
-              'info'
-            );
-          }
-
-          return updatedMember;
-        }
-        return member;
-      }));
-    }
 
     // Update credit card utilization if charged to credit card
     if (newTx.type === 'expense' && newTx.relatedCreditCardId) {
@@ -522,18 +471,6 @@ export default function App() {
     setTransactions(prev => prev.filter(t => t.id !== id));
     syncDeleteTransaction(id);
 
-    // Reverse spending logic on family members
-    if (target.type === 'expense' && target.familyMemberId) {
-      setFamilyMembers(prev => prev.map(member => {
-        if (member.id === target.familyMemberId) {
-          const updatedMember = { ...member, monthlySpent: Math.max(0, member.monthlySpent - target.amount) };
-          syncFamilyMember(updatedMember);
-          return updatedMember;
-        }
-        return member;
-      }));
-    }
-
     // Reverse card charge if deleted
     if (target.type === 'expense' && target.relatedCreditCardId) {
       setCreditCards(prev => prev.map(card => {
@@ -566,28 +503,6 @@ export default function App() {
     // Update transactions array
     setTransactions(prev => prev.map(t => t.id === updatedTx.id ? updatedTx : t));
     syncUpdateTransaction(updatedTx);
-
-    // Re-adjust family member spent if changed
-    if (originalTx.type === 'expense' && originalTx.familyMemberId) {
-      setFamilyMembers(prev => prev.map(m => {
-        if (m.id === originalTx.familyMemberId) {
-          const updatedMember = { ...m, monthlySpent: Math.max(0, m.monthlySpent - originalTx.amount) };
-          syncFamilyMember(updatedMember);
-          return updatedMember;
-        }
-        return m;
-      }));
-    }
-    if (updatedTx.type === 'expense' && updatedTx.familyMemberId) {
-      setFamilyMembers(prev => prev.map(m => {
-        if (m.id === updatedTx.familyMemberId) {
-          const updatedMember = { ...m, monthlySpent: m.monthlySpent + updatedTx.amount };
-          syncFamilyMember(updatedMember);
-          return updatedMember;
-        }
-        return m;
-      }));
-    }
 
     // Re-adjust card usedAmount if changed
     if (originalTx.type === 'expense' && originalTx.relatedCreditCardId) {
@@ -672,7 +587,6 @@ export default function App() {
       date: new Date().toISOString().split('T')[0],
       note: type === 'deposit' ? `Alokasi dana ke goal: ${goalTitle}` : `Tarik saku dari goal: ${goalTitle}`,
       paymentSource: type === 'deposit' ? 'Debit' : 'Cash',
-      familyMemberId: user?.selectedMemberId,
       relatedSavingGoalId: goalId
     });
   };
@@ -699,7 +613,6 @@ export default function App() {
       date: new Date().toISOString().split('T')[0],
       note: `Pelunasan tagihan berjalan kartu ${cardTitle}`,
       paymentSource: 'Debit',
-      familyMemberId: user?.selectedMemberId,
       relatedCreditCardId: cardId
     });
 
@@ -720,7 +633,6 @@ export default function App() {
       date: new Date().toISOString().split('T')[0],
       note: `Transaksi kartu kredit`,
       paymentSource: cardId,
-      familyMemberId: user?.selectedMemberId,
       relatedCreditCardId: cardId
     });
   };
@@ -739,7 +651,6 @@ export default function App() {
       date: new Date().toISOString().split('T')[0],
       note: expenseNote,
       paymentSource: expenseSource,
-      familyMemberId: user?.selectedMemberId,
       relatedCreditCardId: expenseSource.startsWith('card-') ? expenseSource : undefined
     });
 
@@ -763,8 +674,7 @@ export default function App() {
       category: incomeCategory,
       date: new Date().toISOString().split('T')[0],
       note: incomeNote,
-      paymentSource: incomeSource,
-      familyMemberId: user?.selectedMemberId
+      paymentSource: incomeSource
     });
 
     // Reset Form
@@ -844,7 +754,6 @@ export default function App() {
       date: new Date().toISOString().split('T')[0],
       note: extracted.note,
       paymentSource: extracted.paymentSource,
-      familyMemberId: user?.selectedMemberId,
       relatedCreditCardId: extracted.paymentSource.startsWith('card-') ? extracted.paymentSource : undefined
     });
 
@@ -888,7 +797,7 @@ export default function App() {
             </div>
             <div className="block">
               <span className="font-display font-extrabold text-lg tracking-tight">Dompet<span className="text-emerald-400">Kita</span></span>
-              <span className="text-[10px] block text-slate-500 font-semibold tracking-widest uppercase">Keuangan Keluarga</span>
+              <span className="text-[10px] block text-slate-500 font-semibold tracking-widest uppercase">Keuangan Pribadi</span>
             </div>
           </div>
 
@@ -1036,9 +945,7 @@ export default function App() {
             transactions={transactions}
             savingGoals={savingGoals}
             creditCards={creditCards}
-            familyMembers={familyMembers}
             categories={categories}
-            activeMemberId={user?.selectedMemberId || ''}
             profileName={user?.name || 'User'}
             onOpenIncomeForm={() => setShowIncomeModal(true)}
             onOpenExpenseForm={() => setShowExpenseModal(true)}
@@ -1049,7 +956,6 @@ export default function App() {
         {activeTab === 'transactions' && (
           <TransactionsTab
             transactions={transactions}
-            familyMembers={familyMembers}
             categories={categories}
             onDeleteTransaction={handleDeleteTransaction}
             onSelectTransaction={setSelectedTransaction}

@@ -21,15 +21,13 @@ import {
   Zap,
   Info
 } from 'lucide-react';
-import { Transaction, SavingGoal, CreditCard, FamilyMember, Category } from '../types';
+import { Transaction, SavingGoal, CreditCard, Category } from '../types';
 
 interface DashboardTabProps {
   transactions: Transaction[];
   savingGoals: SavingGoal[];
   creditCards: CreditCard[];
-  familyMembers: FamilyMember[];
   categories: Category[];
-  activeMemberId: string;
   profileName: string;
   onOpenIncomeForm: () => void;
   onOpenExpenseForm: () => void;
@@ -40,9 +38,7 @@ export default function DashboardTab({
   transactions,
   savingGoals,
   creditCards,
-  familyMembers,
   categories,
-  activeMemberId,
   profileName,
   onOpenIncomeForm,
   onOpenExpenseForm,
@@ -57,9 +53,16 @@ export default function DashboardTab({
     .filter(t => t.type === 'expense')
     .reduce((acc, curr) => acc + curr.amount, 0);
 
-  // Starting base balance to simulate a real bank account
-  const baseBalance = 0; 
-  const totalBalance = baseBalance + totalIncome - totalExpense;
+  // Total Saldo (hanya menghitung transaksi Tunai / Cash)
+  const cashIncome = transactions
+    .filter(t => t.type === 'income' && t.paymentSource === 'Cash')
+    .reduce((acc, curr) => acc + curr.amount, 0);
+
+  const cashExpense = transactions
+    .filter(t => t.type === 'expense' && t.paymentSource === 'Cash')
+    .reduce((acc, curr) => acc + curr.amount, 0);
+
+  const totalBalance = cashIncome - cashExpense;
 
   // Calculate savings progress
   const totalTargetSavings = savingGoals.reduce((acc, g) => acc + g.targetAmount, 0);
@@ -157,7 +160,7 @@ export default function DashboardTab({
       value: formatIDR(totalBalance),
       icon: <Wallet className="w-4 h-4 text-emerald-600" />,
       color: 'bg-emerald-50 text-emerald-700 border-emerald-100',
-      desc: 'Dompet & Rekening Utama'
+      desc: 'Dompet Tunai (Khusus Cash)'
     },
     {
       id: 'tabungan',
@@ -392,7 +395,7 @@ export default function DashboardTab({
           <div className="flex items-center justify-between mb-4">
             <div>
               <h3 className="font-display font-bold text-slate-800 text-sm">Aktivitas Transaksi Terbaru</h3>
-              <p className="text-[11px] text-slate-500">Catatan transaksi terakhir oleh seluruh anggota keluarga.</p>
+              <p className="text-[11px] text-slate-500">Catatan transaksi keuangan Anda baru-baru ini.</p>
             </div>
             <span className="text-[10px] font-bold text-slate-400 flex items-center gap-1 uppercase bg-slate-100 px-2.5 py-1 rounded-full">
               <Clock className="w-3 h-3 text-slate-500" /> Real-Time
@@ -419,14 +422,6 @@ export default function DashboardTab({
                         <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">{tx.category}</span>
                         <span className="w-1 h-1 bg-slate-355 rounded-full inline-block" />
                         <span className="text-[9px] font-mono text-slate-450">{tx.date}</span>
-                        {tx.familyMemberId && (
-                          <>
-                            <span className="w-1 h-1 bg-slate-355 rounded-full inline-block" />
-                            <span className="text-[9px] font-semibold text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded-md">
-                              {familyMembers.find(f => f.id === tx.familyMemberId)?.name.split(' ')[0]}
-                            </span>
-                          </>
-                        )}
                       </div>
                     </div>
                   </div>
@@ -446,7 +441,7 @@ export default function DashboardTab({
         <div className="bg-white border border-slate-200/80 rounded-2xl p-4 sm:p-5 shadow-xs landscape:col-span-1 lg:col-span-5 flex flex-col justify-between">
           <div>
             <h3 className="font-display font-bold text-slate-800 text-sm mb-1">Status Target Tabungan</h3>
-            <p className="text-[11px] text-slate-500 mb-4">Kemajuan akumulasi tabungan masa depan keluarga.</p>
+            <p className="text-[11px] text-slate-500 mb-4">Kemajuan akumulasi tabungan masa depan Anda.</p>
 
             <div className="space-y-4">
               {savingGoals.length === 0 ? (

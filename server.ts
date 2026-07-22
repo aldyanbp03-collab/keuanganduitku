@@ -209,21 +209,15 @@ async function seedUserData(userId: string) {
     { id: 'card-2', cardName: 'Mandiri Signature', lastFourDigits: '8765', limitAmount: 30000000, usedAmount: 1200000, dueDate: 'Tiap Tanggal 20', color: 'from-slate-800 to-slate-950' }
   ];
 
-  const DEFAULT_FAMILY_MEMBERS = [
-    { id: 'fam-1', name: 'Rian (Ayah)', role: 'Orang Tua', monthlyLimit: 8000000, monthlySpent: 3500000, avatarUrl: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=150&auto=format&fit=crop&q=80' },
-    { id: 'fam-2', name: 'Siti (Ibu)', role: 'Orang Tua', monthlyLimit: 10000000, monthlySpent: 4200000, avatarUrl: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150&auto=format&fit=crop&q=80' },
-    { id: 'fam-3', name: 'Adit (Anak)', role: 'Anak', monthlyLimit: 1500000, monthlySpent: 850000, avatarUrl: 'https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?w=150&auto=format&fit=crop&q=80' }
-  ];
-
   const DEFAULT_TRANSACTIONS = [
-    { id: 'tx-1', title: 'Gaji Bulanan PT ABC', amount: 15000000, type: 'income', category: 'Gaji', date: new Date().toISOString().split('T')[0], note: 'Gaji pokok bulanan', paymentSource: 'Debit', familyMemberId: 'fam-1' },
-    { id: 'tx-2', title: 'Belanja Bulanan Superindo', amount: 1250000, type: 'expense', category: 'Belanja Bulanan', date: new Date().toISOString().split('T')[0], note: 'Kebutuhan pokok dapur', paymentSource: 'Debit', familyMemberId: 'fam-2' },
-    { id: 'tx-3', title: 'Starbucks Coffee', amount: 85000, type: 'expense', category: 'Makanan & Minuman', date: new Date().toISOString().split('T')[0], note: 'Kopi sore santai', paymentSource: 'card-1', familyMemberId: 'fam-1', relatedCreditCardId: 'card-1' },
-    { id: 'tx-4', title: 'Alokasi DP Rumah Baru', amount: 5000000, type: 'expense', category: 'Lain-lain', date: new Date().toISOString().split('T')[0], note: 'Transfer bulanan ke tabungan impian', paymentSource: 'Debit', familyMemberId: 'fam-1', relatedSavingGoalId: 'goal-1' }
+    { id: 'tx-1', title: 'Gaji Bulanan PT ABC', amount: 15000000, type: 'income', category: 'Gaji', date: new Date().toISOString().split('T')[0], note: 'Gaji pokok bulanan', paymentSource: 'Cash' },
+    { id: 'tx-2', title: 'Belanja Bulanan Superindo', amount: 1250000, type: 'expense', category: 'Belanja Bulanan', date: new Date().toISOString().split('T')[0], note: 'Kebutuhan pokok dapur', paymentSource: 'Cash' },
+    { id: 'tx-3', title: 'Starbucks Coffee', amount: 85000, type: 'expense', category: 'Makanan & Minuman', date: new Date().toISOString().split('T')[0], note: 'Kopi sore santai', paymentSource: 'card-1', relatedCreditCardId: 'card-1' },
+    { id: 'tx-4', title: 'Alokasi DP Rumah Baru', amount: 5000000, type: 'expense', category: 'Lain-lain', date: new Date().toISOString().split('T')[0], note: 'Transfer bulanan ke tabungan impian', paymentSource: 'Debit', relatedSavingGoalId: 'goal-1' }
   ];
 
   const DEFAULT_NOTIFICATIONS = [
-    { id: 'notif-1', title: 'Registrasi Berhasil', message: 'Selamat datang di DompetKita! Atur sasaran tabungan dan anggaran bulanan keluarga Anda sekarang.', date: new Date().toISOString().split('T')[0], read: false, type: 'success' }
+    { id: 'notif-1', title: 'Registrasi Berhasil', message: 'Selamat datang di DompetKita! Atur sasaran tabungan dan anggaran bulanan Anda sekarang.', date: new Date().toISOString().split('T')[0], read: false, type: 'success' }
   ];
 
   const DEFAULT_SETTINGS = {
@@ -247,9 +241,6 @@ async function seedUserData(userId: string) {
   for (const card of DEFAULT_CREDIT_CARDS) {
     await db.collection('credit_cards').doc(`${userId}_${card.id}`).set({ ...card, userId });
   }
-  for (const fam of DEFAULT_FAMILY_MEMBERS) {
-    await db.collection('family_members').doc(`${userId}_${fam.id}`).set({ ...fam, userId });
-  }
   for (const tx of DEFAULT_TRANSACTIONS) {
     await db.collection('transactions').doc(`${userId}_${tx.id}`).set({ ...tx, userId });
   }
@@ -269,7 +260,7 @@ async function purgeDemoData() {
       }
     }
     
-    const colList = ['transactions', 'saving_goals', 'credit_cards', 'family_members', 'categories', 'notifications', 'settings'];
+    const colList = ['transactions', 'saving_goals', 'credit_cards', 'categories', 'notifications', 'settings'];
     for (const colName of colList) {
       const colSnap = await db.collection(colName).get();
       for (const doc of colSnap.docs) {
@@ -357,7 +348,6 @@ const requireAuth = async (req: express.Request, res: express.Response, next: ex
         avatarUrl: avatarUrl || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
         salt,
         passwordHash,
-        selectedMemberId: 'fam-1',
         createdAt: new Date().toISOString()
       };
 
@@ -372,8 +362,7 @@ const requireAuth = async (req: express.Request, res: express.Response, next: ex
           id: newUser.id,
           name: newUser.name,
           email: newUser.email,
-          avatarUrl: newUser.avatarUrl,
-          selectedMemberId: 'fam-1'
+          avatarUrl: newUser.avatarUrl
         }
       });
     } catch (err: any) {
@@ -411,8 +400,7 @@ const requireAuth = async (req: express.Request, res: express.Response, next: ex
         user: {
           name: userData.name,
           email: userData.email,
-          avatarUrl: userData.avatarUrl,
-          selectedMemberId: userData.selectedMemberId || 'fam-1'
+          avatarUrl: userData.avatarUrl
         }
       });
     } catch (err: any) {
@@ -460,8 +448,7 @@ const requireAuth = async (req: express.Request, res: express.Response, next: ex
         user: {
           name: userData.name,
           email: userData.email,
-          avatarUrl: userData.avatarUrl,
-          selectedMemberId: userData.selectedMemberId || 'fam-1'
+          avatarUrl: userData.avatarUrl
         }
       });
     } catch (err: any) {
@@ -503,14 +490,6 @@ const requireAuth = async (req: express.Request, res: express.Response, next: ex
         }
       }
 
-      // Delete family members
-      const members = await db.collection('family_members').get();
-      for (const doc of members.docs) {
-        if (doc.id.startsWith(`${userId}_`)) {
-          await doc.ref.delete();
-        }
-      }
-
       // Delete categories
       const categories = await db.collection('categories').get();
       for (const doc of categories.docs) {
@@ -546,8 +525,7 @@ const requireAuth = async (req: express.Request, res: express.Response, next: ex
         user: {
           name: data.name,
           email: data.email,
-          avatarUrl: data.avatarUrl,
-          selectedMemberId: data.selectedMemberId || 'fam-1'
+          avatarUrl: data.avatarUrl
         }
       });
     } catch (err) {
@@ -753,63 +731,6 @@ const requireAuth = async (req: express.Request, res: express.Response, next: ex
       res.json({ success: true });
     } catch (err) {
       res.status(500).json({ error: 'Gagal menghapus target tabungan.' });
-    }
-  });
-
-  // Family Members CRUD
-  app.get('/api/family-members', requireAuth, async (req, res) => {
-    const userId = req.body.currentUserId;
-    try {
-      const snap = await db.collection('family_members').where('userId', '==', userId).get();
-      res.json(snap.docs.map(doc => {
-        const { userId: _, ...fam } = doc.data();
-        return fam;
-      }));
-    } catch (err) {
-      res.status(500).json({ error: 'Gagal mengambil anggota keluarga.' });
-    }
-  });
-
-  app.post('/api/family-members', requireAuth, async (req, res) => {
-    const userId = req.body.currentUserId;
-    const fam = req.body;
-    delete fam.currentUserId;
-
-    if (!fam.id) fam.id = 'fam_' + crypto.randomUUID();
-    fam.userId = userId;
-
-    try {
-      await db.collection('family_members').doc(`${userId}_${fam.id}`).set(fam);
-      res.status(201).json(fam);
-    } catch (err) {
-      res.status(500).json({ error: 'Gagal menambah anggota keluarga.' });
-    }
-  });
-
-  app.put('/api/family-members/:id', requireAuth, async (req, res) => {
-    const userId = req.body.currentUserId;
-    const { id } = req.params;
-    const fam = req.body;
-    delete fam.currentUserId;
-    fam.userId = userId;
-    fam.id = id;
-
-    try {
-      await db.collection('family_members').doc(`${userId}_${id}`).set(fam, { merge: true });
-      res.json(fam);
-    } catch (err) {
-      res.status(500).json({ error: 'Gagal memperbarui anggota keluarga.' });
-    }
-  });
-
-  app.delete('/api/family-members/:id', requireAuth, async (req, res) => {
-    const userId = req.body.currentUserId;
-    const { id } = req.params;
-    try {
-      await db.collection('family_members').doc(`${userId}_${id}`).delete();
-      res.json({ success: true });
-    } catch (err) {
-      res.status(500).json({ error: 'Gagal menghapus anggota keluarga.' });
     }
   });
 

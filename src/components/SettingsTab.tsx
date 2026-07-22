@@ -249,7 +249,7 @@ export default function SettingsTab({
               <CheckCircle2 className="w-4 h-4" /> Apakah Data Keuangan Saya Aman?
             </div>
             <p className="text-[11px] leading-relaxed text-slate-600">
-              Sangat aman! Seluruh catatan transaksi, limit kartu kredit, dan profil keluarga Anda tersimpan secara lokal dan dienkripsi di peramban peranti Anda.
+              Sangat aman! Seluruh catatan transaksi, limit kartu kredit, dan profil Anda tersimpan secara lokal dan dienkripsi di peramban peranti Anda.
             </p>
           </div>
 
@@ -443,7 +443,7 @@ export default function SettingsTab({
 
               <div className="p-5 space-y-4">
                 <p className="text-xs sm:text-sm text-slate-600 leading-relaxed">
-                  Apakah Anda benar-benar yakin ingin menghapus akun ini? Semua informasi transaksi, limit kartu kredit, data alokasi sasaran tabungan, dan profil anggota keluarga akan <strong className="text-red-600">terhapus selamanya</strong> dari peramban ini.
+                  Apakah Anda benar-benar yakin ingin menghapus akun ini? Semua informasi transaksi, limit kartu kredit, dan data alokasi sasaran tabungan akan <strong className="text-red-600">terhapus selamanya</strong> dari peramban ini.
                 </p>
                 <div className="p-3 bg-red-50 border border-red-100 rounded-xl flex items-start gap-2 text-[11px] text-red-700">
                   <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
