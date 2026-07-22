@@ -3,8 +3,9 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
+import { formatThousand, parseThousand } from '../utils/format';
 import { 
   Plus, 
   Coffee, 
@@ -33,6 +34,8 @@ interface ExpensesTabProps {
   onAddTransaction: (tx: Omit<Transaction, 'id'>) => void;
   onDeleteTransaction: (id: string) => void;
   onSelectTransaction?: (tx: Transaction) => void;
+  monthlyBudget?: number;
+  onUpdateMonthlyBudget?: (newBudget: number) => void;
 }
 
 export default function ExpensesTab({
@@ -41,7 +44,9 @@ export default function ExpensesTab({
   creditCards,
   onAddTransaction,
   onDeleteTransaction,
-  onSelectTransaction
+  onSelectTransaction,
+  monthlyBudget = 6500000,
+  onUpdateMonthlyBudget
 }: ExpensesTabProps) {
   // Modal toggle
   const [showAddModal, setShowAddModal] = useState(false);
@@ -55,9 +60,16 @@ export default function ExpensesTab({
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
   
   // Quick budget state
-  const [budgetLimit, setBudgetLimit] = useState(6500000); // Default local budget limit
+  const [budgetLimit, setBudgetLimit] = useState(monthlyBudget);
   const [editingBudget, setEditingBudget] = useState(false);
-  const [tempBudget, setTempBudget] = useState('6500000');
+  const [tempBudget, setTempBudget] = useState(monthlyBudget.toString());
+  const [txToDelete, setTxToDelete] = useState<Transaction | null>(null);
+
+  // Sync state if prop changes
+  useEffect(() => {
+    setBudgetLimit(monthlyBudget);
+    setTempBudget(formatThousand(monthlyBudget));
+  }, [monthlyBudget]);
 
   // Success indicator
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
@@ -82,7 +94,7 @@ export default function ExpensesTab({
 
   const handleManualSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    const parsedAmount = parseFloat(amount);
+    const parsedAmount = parseThousand(amount);
     if (!title || isNaN(parsedAmount) || parsedAmount <= 0) return;
 
     onAddTransaction({
@@ -105,9 +117,12 @@ export default function ExpensesTab({
   };
 
   const handleSaveBudget = () => {
-    const parsed = parseFloat(tempBudget);
+    const parsed = parseThousand(tempBudget);
     if (!parsed || isNaN(parsed) || parsed <= 0) return;
     setBudgetLimit(parsed);
+    if (onUpdateMonthlyBudget) {
+      onUpdateMonthlyBudget(parsed);
+    }
     setEditingBudget(false);
     showToast(`Batas anggaran disetel ke ${formatIDR(parsed)}`);
   };
@@ -190,7 +205,7 @@ export default function ExpensesTab({
                   if (editingBudget) {
                     handleSaveBudget();
                   } else {
-                    setTempBudget(budgetLimit.toString());
+                    setTempBudget(formatThousand(budgetLimit));
                     setEditingBudget(true);
                   }
                 }}
@@ -203,9 +218,11 @@ export default function ExpensesTab({
             {editingBudget && (
               <div className="flex gap-2 mb-4">
                 <input
-                  type="number"
+                  type="text"
+                  inputMode="numeric"
                   value={tempBudget}
-                  onChange={(e) => setTempBudget(e.target.value)}
+                  onChange={(e) => setTempBudget(formatThousand(e.target.value))}
+                  placeholder="Contoh: 6.500.000"
                   className="bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1 text-base focus:outline-hidden w-full font-mono"
                 />
                 <button
@@ -287,9 +304,9 @@ export default function ExpensesTab({
         <div className="flex items-center justify-between pb-3 border-b border-slate-105 mb-3">
           <div>
             <h4 className="font-display font-bold text-slate-800 text-sm">Log Belanja Terakhir</h4>
-            <p className="text-[10px] text-slate-400 uppercase font-bold tracking-wider">Histori pengeluaran yang tercatat di sistem</p>
+            <p className="text-xs text-slate-500 font-normal mt-0.5">Histori pengeluaran yang tercatat di sistem</p>
           </div>
-          <span className="text-[10px] font-bold text-slate-400 bg-slate-100 px-2.5 py-1 rounded-full uppercase tracking-wider">Total: {expensesList.length} Transaksi</span>
+          <span className="text-xs font-medium text-slate-500 bg-slate-100 px-2.5 py-1 rounded-full">Total: {expensesList.length} Transaksi</span>
         </div>
 
         {expensesList.length === 0 ? (
@@ -322,11 +339,12 @@ export default function ExpensesTab({
                 <div className="flex items-center gap-3 shrink-0">
                   <span className="text-xs sm:text-sm font-bold font-mono text-slate-850">-{formatIDR(tx.amount)}</span>
                   <button
+                    type="button"
                     onClick={(e) => {
                       e.stopPropagation(); // Avoid opening details popup
-                      onDeleteTransaction(tx.id);
+                      setTxToDelete(tx);
                     }}
-                    className="p-1.5 text-slate-400 hover:text-rose-500 hover:bg-rose-50 rounded-lg transition opacity-0 group-hover:opacity-100 cursor-pointer"
+                    className="p-1.5 text-rose-600 bg-rose-50 hover:bg-rose-100 border border-rose-200/80 rounded-lg transition cursor-pointer shrink-0 shadow-2xs"
                     title="Hapus Catatan"
                   >
                     <Trash2 className="w-3.5 h-3.5" />
@@ -337,6 +355,72 @@ export default function ExpensesTab({
           </div>
         )}
       </div>
+
+      {/* Confirmation Modal for Transaction Deletion */}
+      <AnimatePresence>
+        {txToDelete && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setTxToDelete(null)}
+              className="absolute inset-0 bg-slate-900/60 backdrop-blur-xs"
+            />
+            
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 10 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 10 }}
+              className="bg-white border border-slate-200 rounded-2xl w-full max-w-[340px] shadow-2xl relative z-10 p-5 text-center overflow-hidden"
+            >
+              <div className="mx-auto w-12 h-12 bg-rose-50 text-rose-600 border border-rose-100 rounded-full flex items-center justify-center mb-3">
+                <Trash2 className="w-5 h-5" />
+              </div>
+              
+              <h3 className="font-display font-bold text-slate-800 text-base mb-1">Hapus Catatan Belanja?</h3>
+              <p className="text-slate-500 text-xs leading-relaxed mb-4">
+                Apakah Anda yakin ingin menghapus catatan belanja <strong className="text-slate-800 font-semibold">"{txToDelete.title}"</strong> ({formatIDR(txToDelete.amount)})?
+              </p>
+
+              <div className="bg-slate-50 border border-slate-200/80 rounded-xl p-3 text-left mb-5 space-y-1 text-xs">
+                <div className="flex justify-between">
+                  <span className="text-slate-500">Kategori:</span>
+                  <span className="font-semibold text-slate-700">{txToDelete.category}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-500">Tanggal:</span>
+                  <span className="font-semibold text-slate-700">{txToDelete.date}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-500">Sumber:</span>
+                  <span className="font-semibold text-slate-700">{txToDelete.paymentSource}</span>
+                </div>
+              </div>
+              
+              <div className="flex gap-2 justify-center">
+                <button
+                  type="button"
+                  onClick={() => setTxToDelete(null)}
+                  className="flex-1 py-2.5 text-xs font-bold text-slate-600 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 rounded-xl transition cursor-pointer"
+                >
+                  Batal
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    onDeleteTransaction(txToDelete.id);
+                    setTxToDelete(null);
+                  }}
+                  className="flex-1 py-2.5 text-xs font-bold bg-rose-600 hover:bg-rose-700 text-white rounded-xl shadow-xs transition cursor-pointer"
+                >
+                  Ya, Hapus
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
 
 
       {/* --- POPUP MODAL: CATAT PENGELUARAN BARU - Clean Input & No Auto-Zoom --- */}
@@ -394,12 +478,12 @@ export default function ExpensesTab({
                   <div>
                     <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Nominal Belanja (Rp)</label>
                     <input
-                      type="number"
+                      type="text"
+                      inputMode="numeric"
                       required
-                      min="1"
                       value={amount}
-                      onChange={(e) => setAmount(e.target.value)}
-                      placeholder="Contoh: 85000"
+                      onChange={(e) => setAmount(formatThousand(e.target.value))}
+                      placeholder="Contoh: 85.000"
                       className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-base sm:text-sm text-slate-800 focus:border-rose-500 focus:outline-hidden transition font-mono"
                     />
                   </div>

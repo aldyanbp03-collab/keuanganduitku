@@ -5,6 +5,7 @@
 
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
+import { formatThousand, parseThousand } from '../utils/format';
 import { 
   CreditCard as CardIcon, 
   PlusCircle, 
@@ -15,16 +16,29 @@ import {
   HelpCircle,
   Sparkles,
   Zap,
-  ArrowDownRight
+  ArrowDownRight,
+  HandCoins,
+  X,
+  Calendar,
+  FileText
 } from 'lucide-react';
-import { CreditCard } from '../types';
+import { CreditCard, DebtRecord } from '../types';
+import DebtsTab from './DebtsTab';
 
 interface CardsTabProps {
   creditCards: CreditCard[];
   onAddCard: (card: Omit<CreditCard, 'id'>) => void;
   onDeleteCard: (id: string) => void;
   onPayCardBill: (id: string, amount: number) => void;
-  onSimulateCharge: (id: string, amount: number, title: string, category: string) => void;
+  onSimulateCharge: (id: string, amount: number, title: string, category: string, date?: string, note?: string) => void;
+  
+  // Debts Props
+  debts: DebtRecord[];
+  onAddDebt: (debt: Omit<DebtRecord, 'id'>, recordTransaction?: boolean, paymentSource?: string) => void;
+  onUpdateDebt: (debt: DebtRecord) => void;
+  onDeleteDebt: (id: string) => void;
+  onPayDebt: (debtId: string, paymentAmount: number, paymentSource: string, note?: string) => void;
+  initialSubTab?: 'cards' | 'debts';
 }
 
 export default function CardsTab({
@@ -32,8 +46,15 @@ export default function CardsTab({
   onAddCard,
   onDeleteCard,
   onPayCardBill,
-  onSimulateCharge
+  onSimulateCharge,
+  debts,
+  onAddDebt,
+  onUpdateDebt,
+  onDeleteDebt,
+  onPayDebt,
+  initialSubTab = 'cards'
 }: CardsTabProps) {
+  const [activeSubTab, setActiveSubTab] = useState<'cards' | 'debts'>(initialSubTab);
   const [showAddForm, setShowAddForm] = useState(false);
   const [showPayModal, setShowPayModal] = useState<string | null>(null);
   const [showChargeModal, setShowChargeModal] = useState<string | null>(null);
@@ -50,6 +71,8 @@ export default function CardsTab({
   const [amountInput, setAmountInput] = useState('');
   const [chargeTitle, setChargeTitle] = useState('');
   const [chargeCategory, setChargeCategory] = useState('Makanan & Minuman');
+  const [chargeDate, setChargeDate] = useState(new Date().toISOString().split('T')[0]);
+  const [chargeNote, setChargeNote] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
 
   const handleCreateCard = (e: React.FormEvent) => {
@@ -62,7 +85,7 @@ export default function CardsTab({
       setErrorMsg('4 digit terakhir harus berupa angka.');
       return;
     }
-    const limitVal = parseFloat(limit);
+    const limitVal = parseThousand(limit);
     if (isNaN(limitVal) || limitVal <= 0) {
       setErrorMsg('Limit kartu harus angka positif.');
       return;
@@ -88,7 +111,7 @@ export default function CardsTab({
 
   const handlePaySubmit = (e: React.FormEvent, card: CreditCard) => {
     e.preventDefault();
-    const amountVal = parseFloat(amountInput);
+    const amountVal = parseThousand(amountInput);
     if (isNaN(amountVal) || amountVal <= 0) {
       setErrorMsg('Nominal pembayaran harus berupa angka positif.');
       return;
@@ -107,10 +130,10 @@ export default function CardsTab({
   const handleChargeSubmit = (e: React.FormEvent, card: CreditCard) => {
     e.preventDefault();
     if (!chargeTitle) {
-      setErrorMsg('Keterangan transaksi kartu wajib diisi.');
+      setErrorMsg('Nama toko / belanja wajib diisi.');
       return;
     }
-    const amountVal = parseFloat(amountInput);
+    const amountVal = parseThousand(amountInput);
     if (isNaN(amountVal) || amountVal <= 0) {
       setErrorMsg('Nominal transaksi harus berupa angka positif.');
       return;
@@ -121,9 +144,17 @@ export default function CardsTab({
       return;
     }
 
-    onSimulateCharge(card.id, amountVal, chargeTitle, chargeCategory);
+    onSimulateCharge(
+      card.id, 
+      amountVal, 
+      chargeTitle, 
+      chargeCategory, 
+      chargeDate || new Date().toISOString().split('T')[0],
+      chargeNote || `Transaksi kartu kredit ${card.cardName}`
+    );
     setAmountInput('');
     setChargeTitle('');
+    setChargeNote('');
     setErrorMsg('');
     setShowChargeModal(null);
   };
@@ -135,27 +166,76 @@ export default function CardsTab({
   return (
     <div className="space-y-6">
       
-      {/* Tab Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <h2 className="text-xl sm:text-2xl font-display font-extrabold text-slate-950 flex items-center gap-2">
-            <CardIcon className="w-7 h-7 text-emerald-600" /> Kelola Kartu Kredit
-          </h2>
-          <p className="text-xs sm:text-sm text-slate-500">
-            Monitoring sisa limit, jatuh tempo, dan bayar tagihan kartu kredit Anda secara disiplin.
-          </p>
-        </div>
-        
+      {/* Sub Tab Switcher: Kartu Kredit vs Hutang & Piutang */}
+      <div className="flex bg-slate-900 p-1.5 rounded-2xl w-full sm:w-fit border border-slate-800 shadow-md gap-1.5">
         <button
-          onClick={() => {
-            setShowAddForm(!showAddForm);
-            setErrorMsg('');
-          }}
-          className="px-4 py-2 bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-bold text-xs rounded-xl transition flex items-center gap-1.5 self-start sm:self-auto cursor-pointer"
+          type="button"
+          onClick={() => setActiveSubTab('cards')}
+          className={`flex-1 sm:flex-initial flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition cursor-pointer ${
+            activeSubTab === 'cards'
+              ? 'bg-emerald-500 text-slate-950 shadow-md shadow-emerald-500/10 font-extrabold'
+              : 'text-slate-400 hover:text-white hover:bg-slate-800/80'
+          }`}
         >
-          <PlusCircle className="w-4 h-4" /> Hubungkan Kartu Baru
+          <CardIcon className={`w-4 h-4 ${activeSubTab === 'cards' ? 'text-slate-950' : 'text-emerald-400'}`} />
+          <span>Kartu Kredit</span>
+          <span className={`text-[10px] px-2 py-0.5 font-mono font-bold rounded-md ${
+            activeSubTab === 'cards' ? 'bg-slate-950/20 text-slate-950' : 'bg-slate-800 text-slate-300'
+          }`}>
+            {creditCards.length}
+          </span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveSubTab('debts')}
+          className={`flex-1 sm:flex-initial flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition cursor-pointer ${
+            activeSubTab === 'debts'
+              ? 'bg-amber-500 text-slate-950 shadow-md shadow-amber-500/10 font-extrabold'
+              : 'text-slate-400 hover:text-white hover:bg-slate-800/80'
+          }`}
+        >
+          <HandCoins className={`w-4 h-4 ${activeSubTab === 'debts' ? 'text-slate-950' : 'text-amber-400'}`} />
+          <span>Hutang & Piutang</span>
+          <span className={`text-[10px] px-2 py-0.5 font-mono font-bold rounded-md ${
+            activeSubTab === 'debts' ? 'bg-slate-950/20 text-slate-950' : 'bg-slate-800 text-slate-300'
+          }`}>
+            {debts.length}
+          </span>
         </button>
       </div>
+
+      {activeSubTab === 'debts' ? (
+        <DebtsTab
+          debts={debts}
+          onAddDebt={onAddDebt}
+          onUpdateDebt={onUpdateDebt}
+          onDeleteDebt={onDeleteDebt}
+          onPayDebt={onPayDebt}
+        />
+      ) : (
+        <>
+          {/* Tab Header */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div>
+              <h2 className="text-xl sm:text-2xl font-display font-extrabold text-slate-950 flex items-center gap-2">
+                <CardIcon className="w-7 h-7 text-emerald-600" /> Kelola Kartu Kredit
+              </h2>
+              <p className="text-xs sm:text-sm text-slate-500">
+                Monitoring sisa limit, jatuh tempo, dan bayar tagihan kartu kredit Anda secara disiplin.
+              </p>
+            </div>
+            
+            <button
+              onClick={() => {
+                setShowAddForm(!showAddForm);
+                setErrorMsg('');
+              }}
+              className="px-4 py-2 bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-bold text-xs rounded-xl transition flex items-center gap-1.5 self-start sm:self-auto cursor-pointer"
+            >
+              <PlusCircle className="w-4 h-4" /> Hubungkan Kartu Baru
+            </button>
+          </div>
 
       {/* Card Addition Form */}
       <AnimatePresence>
@@ -201,11 +281,12 @@ export default function CardsTab({
                 <div>
                   <label className="block text-xs font-semibold text-slate-500 mb-1">Limit Belanja Kartu (Rp)</label>
                   <input
-                    type="number"
+                    type="text"
+                    inputMode="numeric"
                     value={limit}
-                    onChange={(e) => setLimit(e.target.value)}
-                    placeholder="Contoh: 20000000"
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-800 text-xs sm:text-sm focus:border-emerald-500 focus:outline-hidden transition"
+                    onChange={(e) => setLimit(formatThousand(e.target.value))}
+                    placeholder="Contoh: 20.000.000"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-800 text-xs sm:text-sm focus:border-emerald-500 focus:outline-hidden transition font-mono"
                   />
                 </div>
                 <div>
@@ -267,7 +348,7 @@ export default function CardsTab({
       </AnimatePresence>
 
       {/* Interactive Credit Card Deck */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-1 lg:grid-cols-2 gap-6">
         {creditCards.map((card) => {
           const usedPercent = (card.usedAmount / card.limitAmount) * 100;
           const remainingLimit = card.limitAmount - card.usedAmount;
@@ -280,7 +361,7 @@ export default function CardsTab({
               <div>
                 
                 {/* Physical card visualization - Beautiful UI */}
-                <div className={`w-full bg-gradient-to-br ${card.color} text-white rounded-2xl p-5 shadow-lg relative overflow-hidden aspect-[1.586/1] flex flex-col justify-between border border-white/10`}>
+                <div className={`w-full max-w-md md:max-w-lg lg:max-w-none mx-auto md:mx-0 bg-gradient-to-br ${card.color} text-white rounded-2xl p-5 shadow-lg relative overflow-hidden aspect-[1.586/1] flex flex-col justify-between border border-white/10`}>
                   
                   {/* Hologram card chip & Wi-Fi signal */}
                   <div className="flex items-start justify-between">
@@ -297,7 +378,7 @@ export default function CardsTab({
                           e.stopPropagation();
                           setCardToDelete(card);
                         }}
-                        className="p-1.5 bg-white/10 hover:bg-red-500/90 text-white/80 hover:text-white rounded-lg border border-white/10 transition cursor-pointer flex items-center justify-center shrink-0"
+                        className="p-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-lg border border-rose-400/50 transition cursor-pointer flex items-center justify-center shrink-0 shadow-sm"
                         title="Hapus Kartu Kredit"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
@@ -375,6 +456,11 @@ export default function CardsTab({
                   type="button"
                   onClick={() => {
                     setErrorMsg('');
+                    setAmountInput('');
+                    setChargeTitle('');
+                    setChargeCategory('Makanan & Minuman');
+                    setChargeDate(new Date().toISOString().split('T')[0]);
+                    setChargeNote('');
                     setShowChargeModal(card.id);
                   }}
                   className="py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs border border-slate-200 rounded-lg transition flex items-center justify-center gap-1 cursor-pointer"
@@ -383,40 +469,38 @@ export default function CardsTab({
                 </button>
               </div>
 
-              {/* Pay Bill Modal Overlay */}
+              {/* Pay Bill Modal Overlay - Fixed Popup */}
               <AnimatePresence>
                 {showPayModal === card.id && (
-                  <motion.div
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    exit={{ opacity: 0 }}
-                    className="absolute inset-0 bg-white/95 backdrop-blur-xs rounded-2xl p-5 flex flex-col justify-between z-10"
-                  >
-                    <form onSubmit={(e) => handlePaySubmit(e, card)} className="space-y-4 flex flex-col justify-between h-full">
-                      <div>
-                        <h4 className="font-display font-bold text-slate-800 text-sm">Bayar Tagihan Kartu Kredit</h4>
-                        <p className="text-[11px] text-slate-500 mt-0.5">Lunasi sebagian/seluruh tagihan Anda menggunakan Saldo Utama.</p>
-                        
-                        {errorMsg && (
-                          <div className="p-2 bg-red-50 border border-red-100 text-red-600 text-[10px] rounded-lg mt-2">
-                            {errorMsg}
+                  <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+                    <motion.div
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      exit={{ opacity: 0 }}
+                      onClick={() => {
+                        setAmountInput('');
+                        setErrorMsg('');
+                        setShowPayModal(null);
+                      }}
+                      className="absolute inset-0 bg-slate-950/70 backdrop-blur-xs"
+                    />
+
+                    <motion.div
+                      initial={{ opacity: 0, scale: 0.95, y: 15 }}
+                      animate={{ opacity: 1, scale: 1, y: 0 }}
+                      exit={{ opacity: 0, scale: 0.95, y: 15 }}
+                      className="bg-white border border-slate-200 rounded-2xl w-full max-w-[380px] shadow-2xl relative z-10 overflow-hidden"
+                    >
+                      <div className="p-4 bg-slate-900 text-white flex items-center justify-between border-b border-slate-800">
+                        <div className="flex items-center gap-2.5">
+                          <div className="p-2 bg-emerald-500/10 text-emerald-400 rounded-xl border border-emerald-500/20">
+                            <Wallet className="w-4 h-4 text-emerald-400" />
                           </div>
-                        )}
-
-                        <div className="mt-4">
-                          <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Nominal Pembayaran (Rp)</label>
-                          <input
-                            type="number"
-                            value={amountInput}
-                            onChange={(e) => setAmountInput(e.target.value)}
-                            placeholder={`Maksimal tagihan: ${card.usedAmount}`}
-                            className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-1.5 text-xs text-slate-800 focus:border-emerald-500 focus:outline-hidden"
-                            autoFocus
-                          />
+                          <div>
+                            <h4 className="font-display font-bold text-white text-sm">Bayar Tagihan Kartu Kredit</h4>
+                            <p className="text-[11px] text-slate-400 mt-0.5">Kartu: {card.cardName} (•••• {card.lastFourDigits})</p>
+                          </div>
                         </div>
-                      </div>
-
-                      <div className="flex justify-end gap-2 pt-2">
                         <button
                           type="button"
                           onClick={() => {
@@ -424,105 +508,223 @@ export default function CardsTab({
                             setErrorMsg('');
                             setShowPayModal(null);
                           }}
-                          className="px-3 py-1.5 text-slate-500 hover:text-slate-800 text-xs font-bold"
+                          className="p-1 text-slate-400 hover:text-white rounded-lg transition cursor-pointer"
                         >
-                          Batal
-                        </button>
-                        <button
-                          type="submit"
-                          className="px-3 py-1.5 bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-bold text-xs rounded-lg"
-                        >
-                          Konfirmasi Bayar
+                          <X className="w-4 h-4" />
                         </button>
                       </div>
-                    </form>
-                  </motion.div>
-                )}
-              </AnimatePresence>
 
-              {/* Simulate Card Charge Modal Overlay */}
-              <AnimatePresence>
-                {showChargeModal === card.id && (
-                  <motion.div
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    exit={{ opacity: 0 }}
-                    className="absolute inset-0 bg-white/95 backdrop-blur-xs rounded-2xl p-5 flex flex-col justify-between z-10"
-                  >
-                    <form onSubmit={(e) => handleChargeSubmit(e, card)} className="space-y-4 flex flex-col justify-between h-full overflow-y-auto">
-                      <div>
-                        <h4 className="font-display font-bold text-slate-800 text-sm">Simulasi Gesek Kartu Baru</h4>
-                        <p className="text-[11px] text-slate-500 mt-0.5">Catat pengeluaran baru langsung dibebankan ke kartu kredit ini.</p>
+                      <form onSubmit={(e) => handlePaySubmit(e, card)} className="p-4 space-y-4">
+                        <p className="text-xs text-slate-600 leading-relaxed">
+                          Lunasi sebagian atau seluruh tagihan kartu kredit berjalan menggunakan Saldo Utama Anda.
+                        </p>
                         
                         {errorMsg && (
-                          <div className="p-2 bg-red-50 border border-red-100 text-red-600 text-[10px] rounded-lg mt-2">
-                            {errorMsg}
+                          <div className="p-2.5 bg-rose-50 border border-rose-200 text-rose-700 text-xs font-semibold rounded-xl flex items-center gap-2">
+                            <AlertCircle className="w-4 h-4 shrink-0 text-rose-600" />
+                            <span>{errorMsg}</span>
                           </div>
                         )}
 
-                        <div className="mt-3 space-y-2.5">
-                          <div>
-                            <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Nama Toko / Belanja</label>
-                            <input
-                              type="text"
-                              value={chargeTitle}
-                              onChange={(e) => setChargeTitle(e.target.value)}
-                              placeholder="Contoh: Belanja Bulanan Superindo"
-                              className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-1 text-xs text-slate-800 focus:border-emerald-500 focus:outline-hidden"
-                            />
+                        <div>
+                          <div className="flex justify-between items-center mb-1">
+                            <label className="block text-[10px] font-bold text-slate-700 uppercase tracking-wider">
+                              Nominal Pembayaran (Rp)
+                            </label>
+                            <span className="text-[11px] font-mono font-bold text-rose-600">
+                              Tagihan: {formatIDR(card.usedAmount)}
+                            </span>
                           </div>
-                          <div className="grid grid-cols-2 gap-2">
-                            <div>
-                              <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Nominal (Rp)</label>
-                              <input
-                                type="number"
-                                value={amountInput}
-                                onChange={(e) => setAmountInput(e.target.value)}
-                                placeholder="Contoh: 150000"
-                                className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-1 text-xs text-slate-800 focus:border-emerald-500 focus:outline-hidden"
-                              />
-                            </div>
-                            <div>
-                              <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Kategori</label>
-                              <select
-                                value={chargeCategory}
-                                onChange={(e) => setChargeCategory(e.target.value)}
-                                className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-xs text-slate-800 focus:border-emerald-500 focus:outline-hidden"
-                              >
-                                <option value="Makanan & Minuman">Makanan & Minuman</option>
-                                <option value="Belanja Bulanan">Belanja Bulanan</option>
-                                <option value="Transportasi">Transportasi</option>
-                                <option value="Tagihan & Utilitas">Tagihan & Utilitas</option>
-                                <option value="Hiburan & Liburan">Hiburan & Liburan</option>
-                                <option value="Lain-lain">Lain-lain</option>
-                              </select>
-                            </div>
+                          <input
+                            type="text"
+                            inputMode="numeric"
+                            value={amountInput}
+                            onChange={(e) => setAmountInput(formatThousand(e.target.value))}
+                            placeholder={`Contoh: ${formatThousand(card.usedAmount)}`}
+                            className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2 text-xs text-slate-900 placeholder:text-slate-400 focus:border-emerald-500 focus:bg-white focus:outline-hidden font-mono font-bold"
+                            autoFocus
+                          />
+                        </div>
+
+                        <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setAmountInput('');
+                              setErrorMsg('');
+                              setShowPayModal(null);
+                            }}
+                            className="px-4 py-2 text-slate-600 hover:text-slate-900 text-xs font-bold rounded-xl hover:bg-slate-100 transition cursor-pointer"
+                          >
+                            Batal
+                          </button>
+                          <button
+                            type="submit"
+                            className="px-4 py-2 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-extrabold text-xs rounded-xl shadow-md shadow-emerald-500/20 transition cursor-pointer"
+                          >
+                            Konfirmasi Bayar
+                          </button>
+                        </div>
+                      </form>
+                    </motion.div>
+                  </div>
+                )}
+              </AnimatePresence>
+
+              {/* Simulate Card Charge Modal Overlay - Fixed Popup */}
+              <AnimatePresence>
+                {showChargeModal === card.id && (
+                  <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+                    <motion.div
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      exit={{ opacity: 0 }}
+                      onClick={() => {
+                        setAmountInput('');
+                        setChargeTitle('');
+                        setChargeNote('');
+                        setErrorMsg('');
+                        setShowChargeModal(null);
+                      }}
+                      className="absolute inset-0 bg-slate-950/70 backdrop-blur-xs"
+                    />
+
+                    <motion.div
+                      initial={{ opacity: 0, scale: 0.95, y: 15 }}
+                      animate={{ opacity: 1, scale: 1, y: 0 }}
+                      exit={{ opacity: 0, scale: 0.95, y: 15 }}
+                      className="bg-white border border-slate-200 rounded-2xl w-full max-w-[420px] shadow-2xl relative z-10 overflow-hidden"
+                    >
+                      <div className="p-4 bg-slate-900 text-white flex items-center justify-between border-b border-slate-800">
+                        <div className="flex items-center gap-2.5">
+                          <div className="p-2 bg-rose-500/10 text-rose-400 rounded-xl border border-rose-500/20">
+                            <ArrowDownRight className="w-4 h-4 text-rose-400" />
+                          </div>
+                          <div>
+                            <h4 className="font-display font-bold text-white text-sm">Simulasi Gesek Kartu Baru</h4>
+                            <p className="text-[11px] text-slate-400 mt-0.5">Kartu: {card.cardName} (•••• {card.lastFourDigits})</p>
                           </div>
                         </div>
-                      </div>
-
-                      <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
                         <button
                           type="button"
                           onClick={() => {
                             setAmountInput('');
                             setChargeTitle('');
+                            setChargeNote('');
                             setErrorMsg('');
                             setShowChargeModal(null);
                           }}
-                          className="px-3 py-1.5 text-slate-500 hover:text-slate-800 text-xs font-bold"
+                          className="p-1 text-slate-400 hover:text-white rounded-lg transition cursor-pointer"
                         >
-                          Batal
-                        </button>
-                        <button
-                          type="submit"
-                          className="px-3 py-1.5 bg-slate-950 hover:bg-slate-850 text-white font-bold text-xs rounded-lg"
-                        >
-                          Gesek Kartu
+                          <X className="w-4 h-4" />
                         </button>
                       </div>
-                    </form>
-                  </motion.div>
+
+                      <form onSubmit={(e) => handleChargeSubmit(e, card)} className="p-4 space-y-3.5">
+                        {errorMsg && (
+                          <div className="p-2.5 bg-rose-50 border border-rose-200 text-rose-700 text-xs font-semibold rounded-xl flex items-center gap-2">
+                            <AlertCircle className="w-4 h-4 shrink-0 text-rose-600" />
+                            <span>{errorMsg}</span>
+                          </div>
+                        )}
+
+                        <div>
+                          <label className="block text-[10px] font-bold text-slate-700 uppercase tracking-wider mb-1">
+                            Nama Toko / Belanja
+                          </label>
+                          <input
+                            type="text"
+                            value={chargeTitle}
+                            onChange={(e) => setChargeTitle(e.target.value)}
+                            placeholder="Contoh: Belanja Bulanan Superindo"
+                            className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2 text-xs text-slate-900 placeholder:text-slate-400 focus:border-emerald-500 focus:bg-white focus:outline-hidden font-medium"
+                            autoFocus
+                          />
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-2.5">
+                          <div>
+                            <label className="block text-[10px] font-bold text-slate-700 uppercase tracking-wider mb-1">
+                              Nominal (Rp)
+                            </label>
+                            <input
+                              type="text"
+                              inputMode="numeric"
+                              value={amountInput}
+                              onChange={(e) => setAmountInput(formatThousand(e.target.value))}
+                              placeholder="Contoh: 150.000"
+                              className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2 text-xs text-slate-900 placeholder:text-slate-400 focus:border-emerald-500 focus:bg-white focus:outline-hidden font-mono font-bold"
+                            />
+                          </div>
+
+                          <div>
+                            <label className="block text-[10px] font-bold text-slate-700 uppercase tracking-wider mb-1">
+                              Kategori
+                            </label>
+                            <select
+                              value={chargeCategory}
+                              onChange={(e) => setChargeCategory(e.target.value)}
+                              className="w-full bg-slate-50 border border-slate-300 rounded-xl px-2.5 py-2 text-xs text-slate-900 focus:border-emerald-500 focus:bg-white focus:outline-hidden font-medium"
+                            >
+                              <option value="Makanan & Minuman">Makanan & Minuman</option>
+                              <option value="Belanja Bulanan">Belanja Bulanan</option>
+                              <option value="Transportasi">Transportasi</option>
+                              <option value="Tagihan & Utilitas">Tagihan & Utilitas</option>
+                              <option value="Hiburan & Liburan">Hiburan & Liburan</option>
+                              <option value="Lain-lain">Lain-lain</option>
+                            </select>
+                          </div>
+                        </div>
+
+                        <div>
+                          <label className="block text-[10px] font-bold text-slate-700 uppercase tracking-wider mb-1 flex items-center gap-1">
+                            <Calendar className="w-3 h-3 text-slate-500" /> Tanggal Transaksi
+                          </label>
+                          <input
+                            type="date"
+                            value={chargeDate}
+                            onChange={(e) => setChargeDate(e.target.value)}
+                            className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2 text-xs text-slate-900 focus:border-emerald-500 focus:bg-white focus:outline-hidden font-medium"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-[10px] font-bold text-slate-700 uppercase tracking-wider mb-1 flex items-center gap-1">
+                            <FileText className="w-3 h-3 text-slate-500" /> Catatan Tambahan (Opsional)
+                          </label>
+                          <input
+                            type="text"
+                            value={chargeNote}
+                            onChange={(e) => setChargeNote(e.target.value)}
+                            placeholder="Contoh: Promo cashback 10%, cicilan 0%"
+                            className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2 text-xs text-slate-900 placeholder:text-slate-400 focus:border-emerald-500 focus:bg-white focus:outline-hidden font-medium"
+                          />
+                        </div>
+
+                        <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100 mt-2">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setAmountInput('');
+                              setChargeTitle('');
+                              setChargeNote('');
+                              setErrorMsg('');
+                              setShowChargeModal(null);
+                            }}
+                            className="px-4 py-2 text-slate-600 hover:text-slate-900 text-xs font-bold rounded-xl hover:bg-slate-100 transition cursor-pointer"
+                          >
+                            Batal
+                          </button>
+                          <button
+                            type="submit"
+                            className="px-4 py-2 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-extrabold text-xs rounded-xl shadow-md shadow-emerald-500/20 transition cursor-pointer flex items-center gap-1.5"
+                          >
+                            <Zap className="w-3.5 h-3.5 fill-slate-950" /> Gesek Kartu
+                          </button>
+                        </div>
+                      </form>
+                    </motion.div>
+                  </div>
                 )}
               </AnimatePresence>
 
@@ -592,6 +794,9 @@ export default function CardsTab({
           </div>
         )}
       </AnimatePresence>
+
+        </>
+      )}
 
     </div>
   );

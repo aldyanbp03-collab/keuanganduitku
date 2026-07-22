@@ -5,6 +5,7 @@
 
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
+import { formatThousand, parseThousand } from '../utils/format';
 import { 
   PiggyBank, 
   PlusCircle, 
@@ -36,6 +37,7 @@ export default function SavingsTab({
   const [showAddForm, setShowAddForm] = useState(false);
   const [showDepositModal, setShowDepositModal] = useState<string | null>(null);
   const [showWithdrawModal, setShowWithdrawModal] = useState<string | null>(null);
+  const [goalToDelete, setGoalToDelete] = useState<SavingGoal | null>(null);
 
   // Form states for new goal
   const [newTitle, setNewTitle] = useState('');
@@ -52,7 +54,7 @@ export default function SavingsTab({
       setErrorMsg('Semua kolom wajib diisi untuk membuat sasaran.');
       return;
     }
-    const targetVal = parseFloat(newTarget);
+    const targetVal = parseThousand(newTarget);
     if (isNaN(targetVal) || targetVal <= 0) {
       setErrorMsg('Nominal target tabungan harus diisi angka positif.');
       return;
@@ -75,7 +77,7 @@ export default function SavingsTab({
 
   const handleDepositSubmit = (e: React.FormEvent, goalId: string) => {
     e.preventDefault();
-    const amountVal = parseFloat(adjustAmount);
+    const amountVal = parseThousand(adjustAmount);
     if (isNaN(amountVal) || amountVal <= 0) {
       setErrorMsg('Nominal setoran harus berupa angka positif.');
       return;
@@ -89,7 +91,7 @@ export default function SavingsTab({
 
   const handleWithdrawSubmit = (e: React.FormEvent, goal: SavingGoal) => {
     e.preventDefault();
-    const amountVal = parseFloat(adjustAmount);
+    const amountVal = parseThousand(adjustAmount);
     if (isNaN(amountVal) || amountVal <= 0) {
       setErrorMsg('Nominal penarikan harus berupa angka positif.');
       return;
@@ -167,11 +169,12 @@ export default function SavingsTab({
                 <div>
                   <label className="block text-xs font-semibold text-slate-500 mb-1">Target Nominal (Rp)</label>
                   <input
-                    type="number"
+                    type="text"
+                    inputMode="numeric"
                     value={newTarget}
-                    onChange={(e) => setNewTarget(e.target.value)}
-                    placeholder="Contoh: 15000000"
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-800 text-xs sm:text-sm focus:border-emerald-500 focus:outline-hidden transition"
+                    onChange={(e) => setNewTarget(formatThousand(e.target.value))}
+                    placeholder="Contoh: 15.000.000"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-800 text-xs sm:text-sm focus:border-emerald-500 focus:outline-hidden transition font-mono"
                   />
                 </div>
                 <div>
@@ -206,7 +209,7 @@ export default function SavingsTab({
       </AnimatePresence>
 
       {/* Grid List of Saving Goals */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+      <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-5">
         {savingGoals.map((goal) => {
           const goalPercentage = (goal.currentAmount / goal.targetAmount) * 100;
           const remainingAmount = goal.targetAmount - goal.currentAmount;
@@ -224,8 +227,9 @@ export default function SavingsTab({
                   </div>
                   
                   <button
-                    onClick={() => onDeleteGoal(goal.id)}
-                    className="p-1 text-slate-400 hover:text-red-500 rounded-lg transition-all"
+                    type="button"
+                    onClick={() => setGoalToDelete(goal)}
+                    className="p-1.5 text-rose-600 bg-rose-50 hover:bg-rose-100 border border-rose-200/80 rounded-lg transition-all cursor-pointer"
                     title="Hapus sasaran"
                   >
                     <Trash2 className="w-4 h-4" />
@@ -320,11 +324,12 @@ export default function SavingsTab({
                         <div className="mt-4">
                           <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Nominal Setoran (Rp)</label>
                           <input
-                            type="number"
+                            type="text"
+                            inputMode="numeric"
                             value={adjustAmount}
-                            onChange={(e) => setAdjustAmount(e.target.value)}
-                            placeholder="Contoh: 500000"
-                            className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-1.5 text-xs text-slate-800 focus:border-emerald-500 focus:outline-hidden"
+                            onChange={(e) => setAdjustAmount(formatThousand(e.target.value))}
+                            placeholder="Contoh: 500.000"
+                            className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-1.5 text-xs text-slate-800 focus:border-emerald-500 focus:outline-hidden font-mono"
                             autoFocus
                           />
                         </div>
@@ -377,11 +382,12 @@ export default function SavingsTab({
                         <div className="mt-4">
                           <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Nominal Tarik (Rp)</label>
                           <input
-                            type="number"
+                            type="text"
+                            inputMode="numeric"
                             value={adjustAmount}
-                            onChange={(e) => setAdjustAmount(e.target.value)}
-                            placeholder={`Maksimal ${goal.currentAmount}`}
-                            className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-1.5 text-xs text-slate-800 focus:border-emerald-500 focus:outline-hidden"
+                            onChange={(e) => setAdjustAmount(formatThousand(e.target.value))}
+                            placeholder={`Maksimal ${formatIDR(goal.currentAmount)}`}
+                            className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-1.5 text-xs text-slate-800 focus:border-emerald-500 focus:outline-hidden font-mono"
                             autoFocus
                           />
                         </div>
@@ -428,6 +434,72 @@ export default function SavingsTab({
           </p>
         </div>
       </div>
+
+      {/* Confirmation Modal for Goal Deletion */}
+      <AnimatePresence>
+        {goalToDelete && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setGoalToDelete(null)}
+              className="absolute inset-0 bg-slate-900/60 backdrop-blur-xs"
+            />
+            
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 10 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 10 }}
+              className="bg-white border border-slate-200 rounded-2xl w-full max-w-[340px] shadow-2xl relative z-10 p-5 text-center overflow-hidden"
+            >
+              <div className="mx-auto w-12 h-12 bg-rose-50 text-rose-600 border border-rose-100 rounded-full flex items-center justify-center mb-3">
+                <Trash2 className="w-5 h-5" />
+              </div>
+              
+              <h3 className="font-display font-bold text-slate-800 text-base mb-1">Hapus Sasaran Tabungan?</h3>
+              <p className="text-slate-500 text-xs leading-relaxed mb-4">
+                Apakah Anda yakin ingin menghapus sasaran tabungan <strong className="text-slate-800 font-semibold">"{goalToDelete.title}"</strong>?
+              </p>
+
+              <div className="bg-slate-50 border border-slate-200/80 rounded-xl p-3 text-left mb-5 space-y-1 text-xs">
+                <div className="flex justify-between">
+                  <span className="text-slate-500">Terkumpul:</span>
+                  <span className="font-semibold font-mono text-emerald-600">{formatIDR(goalToDelete.currentAmount)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-500">Target:</span>
+                  <span className="font-semibold font-mono text-slate-800">{formatIDR(goalToDelete.targetAmount)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-500">Tenggat:</span>
+                  <span className="font-semibold text-slate-700">{goalToDelete.deadline}</span>
+                </div>
+              </div>
+              
+              <div className="flex gap-2 justify-center">
+                <button
+                  type="button"
+                  onClick={() => setGoalToDelete(null)}
+                  className="flex-1 py-2.5 text-xs font-bold text-slate-600 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 rounded-xl transition cursor-pointer"
+                >
+                  Batal
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    onDeleteGoal(goalToDelete.id);
+                    setGoalToDelete(null);
+                  }}
+                  className="flex-1 py-2.5 text-xs font-bold bg-rose-600 hover:bg-rose-700 text-white rounded-xl shadow-xs transition cursor-pointer"
+                >
+                  Ya, Hapus
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
 
     </div>
   );

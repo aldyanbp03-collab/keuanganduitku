@@ -41,6 +41,7 @@ export default function TransactionsTab({
   const [sortBy, setSortBy] = useState<'date-desc' | 'date-asc' | 'amount-desc' | 'amount-asc'>('date-desc');
   const [showExportSuccess, setShowExportSuccess] = useState(false);
   const [showFilters, setShowFilters] = useState(false); // Collapsible filters to save space
+  const [txToDelete, setTxToDelete] = useState<Transaction | null>(null);
 
   // Filter transactions
   const filteredTransactions = transactions.filter((tx) => {
@@ -373,9 +374,9 @@ export default function TransactionsTab({
                       type="button"
                       onClick={(e) => {
                         e.stopPropagation(); // Avoid triggering details modal when clicking delete
-                        onDeleteTransaction(tx.id);
+                        setTxToDelete(tx);
                       }}
-                      className="p-1.5 text-slate-400 hover:text-rose-500 hover:bg-rose-50 rounded-lg transition-all opacity-0 group-hover:opacity-100 focus:opacity-100 cursor-pointer"
+                      className="p-1.5 text-rose-600 bg-rose-50 hover:bg-rose-100 border border-rose-200/80 rounded-lg transition-all cursor-pointer shrink-0 shadow-2xs"
                       title="Hapus transaksi"
                     >
                       <Trash2 className="w-3.5 h-3.5" />
@@ -388,6 +389,72 @@ export default function TransactionsTab({
           </div>
         )}
       </div>
+
+      {/* Confirmation Modal for Transaction Deletion */}
+      <AnimatePresence>
+        {txToDelete && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setTxToDelete(null)}
+              className="absolute inset-0 bg-slate-900/60 backdrop-blur-xs"
+            />
+            
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 10 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 10 }}
+              className="bg-white border border-slate-200 rounded-2xl w-full max-w-[340px] shadow-2xl relative z-10 p-5 text-center overflow-hidden"
+            >
+              <div className="mx-auto w-12 h-12 bg-rose-50 text-rose-600 border border-rose-100 rounded-full flex items-center justify-center mb-3">
+                <Trash2 className="w-5 h-5" />
+              </div>
+              
+              <h3 className="font-display font-bold text-slate-800 text-base mb-1">Hapus Catatan Transaksi?</h3>
+              <p className="text-slate-500 text-xs leading-relaxed mb-4">
+                Apakah Anda yakin ingin menghapus transaksi <strong className="text-slate-800 font-semibold">"{txToDelete.title}"</strong> ({formatIDR(txToDelete.amount)})?
+              </p>
+
+              <div className="bg-slate-50 border border-slate-200/80 rounded-xl p-3 text-left mb-5 space-y-1 text-xs">
+                <div className="flex justify-between">
+                  <span className="text-slate-500">Kategori:</span>
+                  <span className="font-semibold text-slate-700">{txToDelete.category}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-500">Tanggal:</span>
+                  <span className="font-semibold text-slate-700">{txToDelete.date}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-500">Sumber:</span>
+                  <span className="font-semibold text-slate-700">{txToDelete.paymentSource}</span>
+                </div>
+              </div>
+              
+              <div className="flex gap-2 justify-center">
+                <button
+                  type="button"
+                  onClick={() => setTxToDelete(null)}
+                  className="flex-1 py-2.5 text-xs font-bold text-slate-600 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 rounded-xl transition cursor-pointer"
+                >
+                  Batal
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    onDeleteTransaction(txToDelete.id);
+                    setTxToDelete(null);
+                  }}
+                  className="flex-1 py-2.5 text-xs font-bold bg-rose-600 hover:bg-rose-700 text-white rounded-xl shadow-xs transition cursor-pointer"
+                >
+                  Ya, Hapus
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
 
     </div>
   );

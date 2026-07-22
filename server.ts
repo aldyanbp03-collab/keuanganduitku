@@ -198,26 +198,8 @@ async function seedUserData(userId: string) {
     { id: 'cat-ex-8', name: 'Lain-lain', type: 'expense', iconName: 'HelpCircle', color: 'bg-slate-500' }
   ];
 
-  const DEFAULT_SAVING_GOALS = [
-    { id: 'goal-1', title: 'DP Rumah Baru 🏠', targetAmount: 150000000, currentAmount: 25000000, deadline: '2027-12-31', status: 'active' },
-    { id: 'goal-2', title: 'Dana Darurat 🎯', targetAmount: 20000000, currentAmount: 5000000, deadline: '2026-12-31', status: 'active' },
-    { id: 'goal-3', title: 'Liburan Akhir Tahun ✈', targetAmount: 15000000, currentAmount: 15000000, deadline: '2026-12-15', status: 'completed' }
-  ];
-
-  const DEFAULT_CREDIT_CARDS = [
-    { id: 'card-1', cardName: 'BCA Everyday Card', lastFourDigits: '4321', limitAmount: 15000000, usedAmount: 2450000, dueDate: 'Tiap Tanggal 15', color: 'from-blue-600 to-indigo-800' },
-    { id: 'card-2', cardName: 'Mandiri Signature', lastFourDigits: '8765', limitAmount: 30000000, usedAmount: 1200000, dueDate: 'Tiap Tanggal 20', color: 'from-slate-800 to-slate-950' }
-  ];
-
-  const DEFAULT_TRANSACTIONS = [
-    { id: 'tx-1', title: 'Gaji Bulanan PT ABC', amount: 15000000, type: 'income', category: 'Gaji', date: new Date().toISOString().split('T')[0], note: 'Gaji pokok bulanan', paymentSource: 'Cash' },
-    { id: 'tx-2', title: 'Belanja Bulanan Superindo', amount: 1250000, type: 'expense', category: 'Belanja Bulanan', date: new Date().toISOString().split('T')[0], note: 'Kebutuhan pokok dapur', paymentSource: 'Cash' },
-    { id: 'tx-3', title: 'Starbucks Coffee', amount: 85000, type: 'expense', category: 'Makanan & Minuman', date: new Date().toISOString().split('T')[0], note: 'Kopi sore santai', paymentSource: 'card-1', relatedCreditCardId: 'card-1' },
-    { id: 'tx-4', title: 'Alokasi DP Rumah Baru', amount: 5000000, type: 'expense', category: 'Lain-lain', date: new Date().toISOString().split('T')[0], note: 'Transfer bulanan ke tabungan impian', paymentSource: 'Debit', relatedSavingGoalId: 'goal-1' }
-  ];
-
   const DEFAULT_NOTIFICATIONS = [
-    { id: 'notif-1', title: 'Registrasi Berhasil', message: 'Selamat datang di DompetKita! Atur sasaran tabungan dan anggaran bulanan Anda sekarang.', date: new Date().toISOString().split('T')[0], read: false, type: 'success' }
+    { id: 'notif-1', title: 'Registrasi Berhasil', message: 'Selamat datang di DompetKita! Akun baru Anda siap digunakan. Silakan mulai catat transaksi dan tabungan Anda.', date: new Date().toISOString().split('T')[0], read: false, type: 'success' }
   ];
 
   const DEFAULT_SETTINGS = {
@@ -231,19 +213,12 @@ async function seedUserData(userId: string) {
   // Seed settings
   await db.collection('settings').doc(userId).set(DEFAULT_SETTINGS);
 
-  // Seed others using batched writes or sequential loops
+  // Seed default categories
   for (const cat of DEFAULT_CATEGORIES) {
     await db.collection('categories').doc(`${userId}_${cat.id}`).set({ ...cat, userId });
   }
-  for (const goal of DEFAULT_SAVING_GOALS) {
-    await db.collection('saving_goals').doc(`${userId}_${goal.id}`).set({ ...goal, userId });
-  }
-  for (const card of DEFAULT_CREDIT_CARDS) {
-    await db.collection('credit_cards').doc(`${userId}_${card.id}`).set({ ...card, userId });
-  }
-  for (const tx of DEFAULT_TRANSACTIONS) {
-    await db.collection('transactions').doc(`${userId}_${tx.id}`).set({ ...tx, userId });
-  }
+
+  // Seed welcome notification
   for (const notif of DEFAULT_NOTIFICATIONS) {
     await db.collection('notifications').doc(`${userId}_${notif.id}`).set({ ...notif, userId });
   }
@@ -260,7 +235,7 @@ async function purgeDemoData() {
       }
     }
     
-    const colList = ['transactions', 'saving_goals', 'credit_cards', 'categories', 'notifications', 'settings'];
+    const colList = ['transactions', 'saving_goals', 'debts', 'credit_cards', 'categories', 'notifications', 'settings'];
     for (const colName of colList) {
       const colSnap = await db.collection(colName).get();
       for (const doc of colSnap.docs) {
@@ -482,6 +457,14 @@ const requireAuth = async (req: express.Request, res: express.Response, next: ex
         }
       }
 
+      // Delete user's debts
+      const debts = await db.collection('debts').get();
+      for (const doc of debts.docs) {
+        if (doc.id.startsWith(`${userId}_`)) {
+          await doc.ref.delete();
+        }
+      }
+
       // Delete user's credit cards
       const cards = await db.collection('credit_cards').get();
       for (const doc of cards.docs) {
@@ -539,9 +522,11 @@ const requireAuth = async (req: express.Request, res: express.Response, next: ex
     try {
       const settingsDoc = await db.collection('settings').doc(userId).get();
       if (!settingsDoc.exists) {
-        return res.json({ language: 'id', currency: 'IDR', pushNotifications: true, budgetWarningLimit: 80, darkMode: false });
+        return res.json({ language: 'id', currency: 'IDR', pushNotifications: true, budgetWarningLimit: 80, monthlyBudget: 6500000, darkMode: false });
       }
-      res.json(settingsDoc.data());
+      const data = settingsDoc.data() || {};
+      if (data.monthlyBudget === undefined) data.monthlyBudget = 6500000;
+      res.json(data);
     } catch (err) {
       res.status(500).json({ error: 'Gagal mengambil setelan.' });
     }
@@ -549,9 +534,12 @@ const requireAuth = async (req: express.Request, res: express.Response, next: ex
 
   app.post('/api/settings', requireAuth, async (req, res) => {
     const userId = req.body.currentUserId;
-    const { language, currency, pushNotifications, budgetWarningLimit, darkMode } = req.body;
+    const { language, currency, pushNotifications, budgetWarningLimit, monthlyBudget, darkMode } = req.body;
     try {
-      const payload = { language, currency, pushNotifications, budgetWarningLimit, darkMode: !!darkMode };
+      const payload: any = { language, currency, pushNotifications, budgetWarningLimit, darkMode: !!darkMode };
+      if (monthlyBudget !== undefined && !isNaN(Number(monthlyBudget))) {
+        payload.monthlyBudget = Number(monthlyBudget);
+      }
       await db.collection('settings').doc(userId).set(payload, { merge: true });
       res.json({ success: true, settings: payload });
     } catch (err) {
@@ -734,6 +722,133 @@ const requireAuth = async (req: express.Request, res: express.Response, next: ex
     }
   });
 
+  // Debts (Hutang Piutang) CRUD
+  app.get('/api/debts', requireAuth, async (req, res) => {
+    const userId = req.body.currentUserId;
+    try {
+      const snap = await db.collection('debts').where('userId', '==', userId).get();
+      res.json(snap.docs.map(doc => {
+        const { userId: _, ...debt } = doc.data();
+        return debt;
+      }));
+    } catch (err) {
+      res.status(500).json({ error: 'Gagal mengambil data hutang piutang.' });
+    }
+  });
+
+  app.post('/api/debts', requireAuth, async (req, res) => {
+    const userId = req.body.currentUserId;
+    const debt = req.body;
+    delete debt.currentUserId;
+
+    if (!debt.id) debt.id = 'debt_' + crypto.randomUUID();
+    debt.userId = userId;
+
+    if (!debt.status) {
+      debt.status = debt.remainingAmount <= 0 ? 'paid' : (debt.remainingAmount < debt.totalAmount ? 'partially_paid' : 'unpaid');
+    }
+
+    try {
+      await db.collection('debts').doc(`${userId}_${debt.id}`).set(debt);
+      res.status(201).json(debt);
+    } catch (err) {
+      res.status(500).json({ error: 'Gagal menyimpan data hutang piutang.' });
+    }
+  });
+
+  app.put('/api/debts/:id', requireAuth, async (req, res) => {
+    const userId = req.body.currentUserId;
+    const { id } = req.params;
+    const debt = req.body;
+    delete debt.currentUserId;
+    debt.userId = userId;
+    debt.id = id;
+
+    if (debt.remainingAmount <= 0) debt.status = 'paid';
+    else if (debt.remainingAmount < debt.totalAmount) debt.status = 'partially_paid';
+    else debt.status = 'unpaid';
+
+    try {
+      await db.collection('debts').doc(`${userId}_${id}`).set(debt, { merge: true });
+      res.json(debt);
+    } catch (err) {
+      res.status(500).json({ error: 'Gagal memperbarui hutang piutang.' });
+    }
+  });
+
+  app.delete('/api/debts/:id', requireAuth, async (req, res) => {
+    const userId = req.body.currentUserId;
+    const { id } = req.params;
+    try {
+      await db.collection('debts').doc(`${userId}_${id}`).delete();
+      res.json({ success: true });
+    } catch (err) {
+      res.status(500).json({ error: 'Gagal menghapus hutang piutang.' });
+    }
+  });
+
+  app.post('/api/debts/:id/pay', requireAuth, async (req, res) => {
+    const userId = req.body.currentUserId;
+    const { id } = req.params;
+    const { paymentAmount, paymentSource, note } = req.body;
+
+    if (!paymentAmount || paymentAmount <= 0) {
+      return res.status(400).json({ error: 'Nominal pembayaran tidak valid.' });
+    }
+
+    try {
+      const debtDocRef = db.collection('debts').doc(`${userId}_${id}`);
+      const debtDoc = await debtDocRef.get();
+      if (!debtDoc.exists) {
+        return res.status(404).json({ error: 'Catatan hutang/piutang tidak ditemukan.' });
+      }
+
+      const debtData = debtDoc.data()!;
+      const newRemaining = Math.max(0, debtData.remainingAmount - Number(paymentAmount));
+      const newStatus = newRemaining === 0 ? 'paid' : 'partially_paid';
+
+      await debtDocRef.update({
+        remainingAmount: newRemaining,
+        status: newStatus
+      });
+
+      // Automatically create corresponding income or expense transaction
+      const isHutang = debtData.type === 'hutang'; // Paying debt = expense; receiving piutang = income
+      const txType = isHutang ? 'expense' : 'income';
+      const title = isHutang 
+        ? `Pembayaran Hutang: ${debtData.personName}` 
+        : `Penerimaan Piutang: ${debtData.personName}`;
+
+      const txId = 'tx_' + crypto.randomUUID();
+      const newTx = {
+        id: txId,
+        userId,
+        title,
+        amount: Number(paymentAmount),
+        type: txType,
+        category: 'Lain-lain',
+        date: new Date().toISOString().split('T')[0],
+        note: note || (isHutang ? `Cicilan/pelunasan hutang ke ${debtData.personName}` : `Penerimaan pelunasan piutang dari ${debtData.personName}`),
+        paymentSource: paymentSource || 'Cash'
+      };
+
+      await db.collection('transactions').doc(`${userId}_${txId}`).set(newTx);
+
+      res.json({
+        success: true,
+        updatedDebt: {
+          ...debtData,
+          remainingAmount: newRemaining,
+          status: newStatus
+        },
+        transaction: newTx
+      });
+    } catch (err) {
+      console.error('Error paying debt:', err);
+      res.status(500).json({ error: 'Gagal memproses pembayaran hutang/piutang.' });
+    }
+  });
+
   // Categories CRUD
   app.get('/api/categories', requireAuth, async (req, res) => {
     const userId = req.body.currentUserId;
@@ -869,110 +984,6 @@ const requireAuth = async (req: express.Request, res: express.Response, next: ex
     }
     return aiClient;
   };
-
-  // AI Receipt Scanner endpoint
-  app.post('/api/scan-receipt', requireAuth, async (req, res) => {
-    const { image } = req.body;
-    if (!image) {
-      return res.status(400).json({ error: 'Gambar tidak boleh kosong.' });
-    }
-
-    try {
-      let mimeType = 'image/jpeg';
-      let base64Data = image;
-
-      if (image.includes(';base64,')) {
-        const parts = image.split(';base64,');
-        const match = parts[0].match(/data:(image\/[a-zA-Z0-9.\-+]+)/);
-        mimeType = match ? match[1] : 'image/jpeg';
-        base64Data = parts[1];
-      }
-
-      const ai = getGeminiClient();
-      const response = await ai.models.generateContent({
-        model: 'gemini-3.5-flash',
-        contents: {
-          parts: [
-            {
-              inlineData: {
-                mimeType: mimeType,
-                data: base64Data
-              }
-            },
-            {
-              text: `Analisislah gambar struk belanja, nota kasir, tagihan (invoice), struk restoran, atau tanda terima pembayaran ini secara detail.
-Tugas Anda adalah mengekstrak informasi keuangan penting berikut:
-1. "merchantName": Nama toko, minimarket, supermarket, restoran, kafe, atau tempat transaksi lainnya. Cari nama/logo paling besar di bagian atas struk (misalnya Alfamart, Indomaret, Starbucks, McDonald's, Superindo, dll.). Berikan tebakan terbaik jika tidak terbaca jelas. Jangan gunakan kata umum jika nama spesifik tersedia.
-2. "amount": Cari nominal grand total (jumlah keseluruhan yang benar-benar dibayarkan oleh pelanggan setelah diskon atau pajak). Abaikan harga per item, cari angka paling akhir yang biasanya berada di samping tulisan "TOTAL", "GRAND TOTAL", "CASH", "TUNAI", "KARTU", "NETTO", "JUMLAH BAYAR", "RP", atau sejenisnya. Pastikan nilainya berupa ANGKA BULAT SAJA (integer) tanpa desimal, titik, koma, maupun Rp (contoh: 42500).
-3. "category": Kelompokkan pengeluaran ini ke dalam salah satu dari kategori persis berikut berdasarkan jenis merchant atau barang yang dibeli:
-   - "Makanan & Minuman": Untuk restoran, kafe, jajan, kopi, warung makan, dsb.
-   - "Belanja Bulanan": Untuk belanja bahan pokok di supermarket/minimarket seperti Alfamart, Indomaret, Superindo, dsb.
-   - "Transportasi": Untuk bensin, ojek online, taksi, parkir, kereta, tiket perjalanan, dsb.
-   - "Tagihan & Utilitas": Untuk pembayaran listrik, air, internet, langganan aplikasi, tagihan bulanan, dsb.
-   - "Hiburan & Liburan": Untuk bioskop, tiket wisata, game, karaoke, hobi, dsb.
-   - "Pendidikan": Untuk buku pelajaran, SPP, kursus, seminar, alat tulis, dsb.
-   - "Kesehatan": Untuk obat-obatan di apotek, konsultasi dokter, vitamin, dsb.
-   - "Lain-lain": Jika tidak cocok dengan kategori mana pun di atas.
-4. "notes": Rangkum barang-barang yang dibeli secara singkat (contoh: "Membeli minyak goreng, roti, dan susu" atau "Makan siang ramen & ocha").
-
-PENTING: Jawab dalam format JSON yang valid sesuai skema yang diminta tanpa ada teks penjelasan lainnya.`
-            }
-          ]
-        },
-        config: {
-          responseMimeType: 'application/json',
-          responseSchema: {
-            type: Type.OBJECT,
-            properties: {
-              merchantName: {
-                type: Type.STRING,
-                description: 'Nama toko, restoran, atau nama merchant/tempat transaksi. Berikan tebakan terbaik jika kurang jelas.'
-              },
-              amount: {
-                type: Type.INTEGER,
-                description: 'Jumlah total nominal uang yang dibayarkan dalam Rupiah (grand total harga).'
-              },
-              category: {
-                type: Type.STRING,
-                description: 'Kategori pengeluaran. Harus persis salah satu dari kategori ini: "Makanan & Minuman", "Belanja Bulanan", "Transportasi", "Tagihan & Utilitas", "Hiburan & Liburan", "Pendidikan", "Kesehatan", "Lain-lain".'
-              },
-              notes: {
-                type: Type.STRING,
-                description: 'Rincian singkat atau ringkasan barang yang dibeli.'
-              }
-            },
-            required: ['merchantName', 'amount', 'category', 'notes']
-          }
-        }
-      });
-
-      const text = response.text;
-      if (!text) {
-        throw new Error('Gemini did not return any text.');
-      }
-
-      let cleanedText = text.trim();
-      if (cleanedText.startsWith('```')) {
-        cleanedText = cleanedText.replace(/^```(json)?/i, '').replace(/```$/, '').trim();
-      }
-
-      const result = JSON.parse(cleanedText);
-      res.json(result);
-    } catch (err: any) {
-      console.error('Receipt scan error:', err);
-      // Only fallback if GEMINI_API_KEY is missing, otherwise return actual error to the frontend
-      if (!process.env.GEMINI_API_KEY) {
-        return res.json({
-          merchantName: 'Alfamart Gatsu (Simulasi)',
-          amount: 42500,
-          category: 'Belanja Bulanan',
-          notes: 'Pencatatan otomatis via simulasi struk belanja (Gemini offline/tidak aktif).'
-        });
-      }
-      res.status(500).json({ error: `Gagal memindai struk via Gemini AI: ${err.message || err}` });
-    }
-  });
-
 
 async function setupViteAndListen() {
   // Serve frontend files

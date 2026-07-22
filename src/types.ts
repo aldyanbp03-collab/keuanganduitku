@@ -11,6 +11,20 @@ export interface UserProfile {
   currency: string;
 }
 
+export type DebtType = 'hutang' | 'piutang'; // 'hutang' = Pinjam dari orang lain, 'piutang' = Meminjamkan ke orang lain
+
+export interface DebtRecord {
+  id: string;
+  personName: string; // Nama peminjam atau pemberi pinjaman
+  type: DebtType;
+  totalAmount: number; // Nominal total
+  remainingAmount: number; // Sisa nominal yang belum dilunasi
+  dueDate: string; // Tanggal jatuh tempo (YYYY-MM-DD)
+  createdDate: string; // Tanggal pencatatan
+  note?: string;
+  status: 'unpaid' | 'partially_paid' | 'paid';
+}
+
 export type TransactionType = 'income' | 'expense';
 
 export interface Transaction {
@@ -67,5 +81,6 @@ export interface AppSettings {
   currency: string;
   pushNotifications: boolean;
   budgetWarningLimit: number; // e.g., 80 for 80%
+  monthlyBudget?: number;
   darkMode?: boolean;
 }

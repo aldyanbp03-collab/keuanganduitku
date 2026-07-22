@@ -3,7 +3,32 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { Category, SavingGoal, CreditCard, Transaction, NotificationItem, AppSettings } from '../types';
+import { Category, SavingGoal, CreditCard, Transaction, NotificationItem, AppSettings, DebtRecord } from '../types';
+
+export const DEFAULT_DEBTS: DebtRecord[] = [
+  {
+    id: 'debt-1',
+    personName: 'Budi Santoso',
+    type: 'piutang',
+    totalAmount: 1500000,
+    remainingAmount: 1000000,
+    dueDate: '2026-08-15',
+    createdDate: new Date().toISOString().split('T')[0],
+    note: 'Pinjaman modal usaha pulsa',
+    status: 'partially_paid'
+  },
+  {
+    id: 'debt-2',
+    personName: 'Koperasi Mandiri',
+    type: 'hutang',
+    totalAmount: 3000000,
+    remainingAmount: 3000000,
+    dueDate: '2026-08-30',
+    createdDate: new Date().toISOString().split('T')[0],
+    note: 'Pinjaman persiapan renovasi dapur',
+    status: 'unpaid'
+  }
+];
 
 export const DEFAULT_CATEGORIES: Category[] = [
   // Income

@@ -21,7 +21,8 @@ import {
   X,
   ShieldAlert,
   Moon,
-  Sun
+  Sun,
+  LogOut
 } from 'lucide-react';
 import { Category, AppSettings } from '../types';
 
@@ -32,6 +33,7 @@ interface SettingsTabProps {
   settings: AppSettings;
   onUpdateSettings: (newSettings: AppSettings) => void;
   onDeleteAccount: () => void;
+  onLogout?: () => void;
 }
 
 export default function SettingsTab({
@@ -40,10 +42,12 @@ export default function SettingsTab({
   onDeleteCategory,
   settings,
   onUpdateSettings,
-  onDeleteAccount
+  onDeleteAccount,
+  onLogout
 }: SettingsTabProps) {
   const [showAddCat, setShowAddCat] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [catToDelete, setCatToDelete] = useState<Category | null>(null);
   const [newCatName, setNewCatName] = useState('');
   const [newCatType, setNewCatType] = useState<'income' | 'expense'>('expense');
   const [newCatColor, setNewCatColor] = useState('bg-slate-500');
@@ -130,7 +134,7 @@ export default function SettingsTab({
               
               {/* Delete Category button */}
               <button
-                onClick={() => onDeleteCategory(cat.id)}
+                onClick={() => setCatToDelete(cat)}
                 className="text-slate-400 hover:text-rose-500 p-0.5 rounded transition cursor-pointer shrink-0"
                 title="Hapus Kategori"
               >
@@ -265,7 +269,38 @@ export default function SettingsTab({
         </div>
       </div>
 
-      {/* 4. Danger Zone: Delete Account */}
+      {/* 4. Sesi Login & Keluar Akun */}
+      <div className="bg-white border border-slate-200/80 rounded-2xl p-5 shadow-xs space-y-4">
+        <div className="flex items-center gap-2 border-b border-slate-100 pb-3">
+          <div className="p-2 bg-slate-100 text-slate-800 border border-slate-200 rounded-xl">
+            <LogOut className="w-4.5 h-4.5" />
+          </div>
+          <div>
+            <h3 className="font-display font-bold text-slate-800 text-sm">Sesi Login Akun</h3>
+            <p className="text-[11px] text-slate-500">Keluar dari akun Anda saat ini tanpa menghapus data.</p>
+          </div>
+        </div>
+
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="space-y-1">
+            <span className="text-xs font-semibold text-slate-800 block">Keluar dari Akun</span>
+            <span className="text-[11px] text-slate-500 block max-w-xl">
+              Anda akan keluar dari aplikasi dan kembali ke halaman login. Semua data tersimpan aman.
+            </span>
+          </div>
+          {onLogout && (
+            <button
+              onClick={onLogout}
+              className="px-4 py-2.5 bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold text-xs rounded-xl transition flex items-center justify-center gap-2 border border-rose-200/80 cursor-pointer shrink-0"
+            >
+              <LogOut className="w-4 h-4 text-rose-600" />
+              Keluar (Logout)
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* 5. Danger Zone: Delete Account */}
       <div className="bg-red-50/40 border border-red-200/60 rounded-2xl p-5 space-y-4">
         <div className="flex items-center gap-2 border-b border-red-100 pb-3">
           <div className="p-2 bg-red-100 text-red-600 rounded-xl">
@@ -469,6 +504,61 @@ export default function SettingsTab({
                     Ya, Hapus Akun Saya
                   </button>
                 </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Confirmation Modal for Category Deletion */}
+      <AnimatePresence>
+        {catToDelete && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setCatToDelete(null)}
+              className="absolute inset-0 bg-slate-900/60 backdrop-blur-xs"
+            />
+            
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 10 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 10 }}
+              className="bg-white border border-slate-200 rounded-2xl w-full max-w-[340px] shadow-2xl relative z-10 p-5 text-center overflow-hidden"
+            >
+              <div className="mx-auto w-12 h-12 bg-rose-50 text-rose-600 border border-rose-100 rounded-full flex items-center justify-center mb-3">
+                <Trash2 className="w-5 h-5" />
+              </div>
+              
+              <h3 className="font-display font-bold text-slate-800 text-base mb-1">Hapus Kategori Keuangan?</h3>
+              <p className="text-slate-500 text-xs leading-relaxed mb-4">
+                Apakah Anda yakin ingin menghapus kategori <strong className="text-slate-800 font-semibold">"{catToDelete.name}"</strong> ({catToDelete.type === 'income' ? 'Pemasukan' : 'Pengeluaran'})?
+              </p>
+
+              <div className="p-3 bg-amber-50 border border-amber-200/80 rounded-xl text-left mb-5 text-[11px] text-amber-800 leading-relaxed">
+                Transaksi lama yang menggunakan kategori ini tetap aman dan tidak akan terhapus.
+              </div>
+              
+              <div className="flex gap-2 justify-center">
+                <button
+                  type="button"
+                  onClick={() => setCatToDelete(null)}
+                  className="flex-1 py-2.5 text-xs font-bold text-slate-600 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 rounded-xl transition cursor-pointer"
+                >
+                  Batal
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    onDeleteCategory(catToDelete.id);
+                    setCatToDelete(null);
+                  }}
+                  className="flex-1 py-2.5 text-xs font-bold bg-rose-600 hover:bg-rose-700 text-white rounded-xl shadow-xs transition cursor-pointer"
+                >
+                  Ya, Hapus
+                </button>
               </div>
             </motion.div>
           </div>

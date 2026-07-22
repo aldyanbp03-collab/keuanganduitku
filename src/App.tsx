@@ -20,11 +20,11 @@ import {
   Sparkles, 
   Check, 
   ArrowRight, 
-  Scan, 
-  Receipt,
   FileText, 
   Info,
-  Menu
+  Menu,
+  HandCoins,
+  ShoppingBag
 } from 'lucide-react';
 
 import { 
@@ -34,7 +34,8 @@ import {
   CreditCard, 
   Category, 
   NotificationItem, 
-  AppSettings 
+  AppSettings,
+  DebtRecord
 } from './types';
 
 import { 
@@ -43,8 +44,10 @@ import {
   DEFAULT_CREDIT_CARDS, 
   DEFAULT_TRANSACTIONS, 
   DEFAULT_NOTIFICATIONS, 
-  DEFAULT_SETTINGS 
+  DEFAULT_SETTINGS,
+  DEFAULT_DEBTS
 } from './data/defaultData';
+import { formatThousand, parseThousand } from './utils/format';
 
 // Modular Tab Components
 import AuthScreen from './components/AuthScreen';
@@ -53,8 +56,9 @@ import TransactionsTab from './components/TransactionsTab';
 import SavingsTab from './components/SavingsTab';
 import CardsTab from './components/CardsTab';
 import ExpensesTab from './components/ExpensesTab';
+import ExpensesSavingsTab from './components/ExpensesSavingsTab';
 import SettingsTab from './components/SettingsTab';
-import BarcodeScanner from './components/BarcodeScanner';
+import DebtsTab from './components/DebtsTab';
 import EditTransactionModal from './components/EditTransactionModal';
 
 export default function App() {
@@ -68,15 +72,17 @@ export default function App() {
     return saved ? JSON.parse(saved) : null;
   });
 
-  const [transactions, setTransactions] = useState<Transaction[]>(DEFAULT_TRANSACTIONS);
-  const [savingGoals, setSavingGoals] = useState<SavingGoal[]>(DEFAULT_SAVING_GOALS);
-  const [creditCards, setCreditCards] = useState<CreditCard[]>(DEFAULT_CREDIT_CARDS);
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [savingGoals, setSavingGoals] = useState<SavingGoal[]>([]);
+  const [debts, setDebts] = useState<DebtRecord[]>([]);
+  const [creditCards, setCreditCards] = useState<CreditCard[]>([]);
   const [categories, setCategories] = useState<Category[]>(DEFAULT_CATEGORIES);
-  const [notifications, setNotifications] = useState<NotificationItem[]>(DEFAULT_NOTIFICATIONS);
+  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
   const [isLoading, setIsLoading] = useState(false);
 
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'expenses' | 'savings' | 'cards' | 'transactions' | 'settings'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'expenses_savings' | 'expenses' | 'savings' | 'cards' | 'transactions' | 'debts' | 'settings'>('dashboard');
+  const [expensesSavingsSubTab, setExpensesSavingsSubTab] = useState<'expenses' | 'savings'>('expenses');
   const [selectedTransaction, setSelectedTransaction] = useState<Transaction | null>(null);
 
   // Modal / Wizard drawer states
@@ -98,7 +104,6 @@ export default function App() {
   const [expenseCategory, setExpenseCategory] = useState('');
   const [expenseSource, setExpenseSource] = useState('Cash');
   const [expenseNote, setExpenseNote] = useState('');
-  const [expenseInputMethod, setExpenseInputMethod] = useState<'manual' | 'receipt'>('manual');
 
   // Income form state
   const [incomeTitle, setIncomeTitle] = useState('');
@@ -144,6 +149,7 @@ export default function App() {
         const [
           resTx,
           resGoals,
+          resDebts,
           resCards,
           resCats,
           resNotifs,
@@ -151,6 +157,7 @@ export default function App() {
         ] = await Promise.all([
           fetch('/api/transactions', { headers }).then(handleResponse),
           fetch('/api/saving-goals', { headers }).then(handleResponse),
+          fetch('/api/debts', { headers }).then(handleResponse),
           fetch('/api/credit-cards', { headers }).then(handleResponse),
           fetch('/api/categories', { headers }).then(handleResponse),
           fetch('/api/notifications', { headers }).then(handleResponse),
@@ -160,6 +167,7 @@ export default function App() {
         if (
           resTx === null ||
           resGoals === null ||
+          resDebts === null ||
           resCards === null ||
           resCats === null ||
           resNotifs === null ||
@@ -170,8 +178,11 @@ export default function App() {
 
         if (Array.isArray(resTx)) setTransactions(resTx);
         if (Array.isArray(resGoals)) setSavingGoals(resGoals);
+        if (Array.isArray(resDebts)) setDebts(resDebts);
         if (Array.isArray(resCards)) setCreditCards(resCards);
-        if (Array.isArray(resCats)) setCategories(resCats);
+        if (Array.isArray(resCats)) {
+          setCategories(resCats.length > 0 ? resCats : DEFAULT_CATEGORIES);
+        }
         if (Array.isArray(resNotifs)) setNotifications(resNotifs);
         if (resSettings && !resSettings.error) setSettings(resSettings);
       } catch (err) {
@@ -299,6 +310,138 @@ export default function App() {
     }
   };
 
+  // Debts Handlers & Sync
+  const handleAddDebt = async (
+    debtData: Omit<DebtRecord, 'id'>, 
+    recordTransaction = false, 
+    paymentSource = 'Cash'
+  ) => {
+    const newDebt: DebtRecord = {
+      ...debtData,
+      id: `debt-${Date.now()}`
+    };
+
+    setDebts(prev => [newDebt, ...prev]);
+
+    if (token) {
+      try {
+        await fetch('/api/debts', {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify(newDebt)
+        });
+      } catch (e) {
+        console.error('Debt addition sync error:', e);
+      }
+    }
+
+    if (recordTransaction) {
+      const isHutang = debtData.type === 'hutang';
+      const txType = isHutang ? 'income' : 'expense';
+      const title = isHutang 
+        ? `Pinjaman Diterima: ${debtData.personName}` 
+        : `Pinjaman Diberikan: ${debtData.personName}`;
+
+      const newTx: Transaction = {
+        id: `tx-${Date.now()}`,
+        title,
+        amount: debtData.totalAmount,
+        type: txType,
+        category: 'Lain-lain',
+        date: new Date().toISOString().split('T')[0],
+        note: debtData.note || (isHutang ? `Pencatatan awal hutang dari ${debtData.personName}` : `Pencatatan awal piutang untuk ${debtData.personName}`),
+        paymentSource: paymentSource || 'Cash'
+      };
+
+      setTransactions(prev => [newTx, ...prev]);
+      syncAddTransaction(newTx);
+    }
+  };
+
+  const handleUpdateDebt = async (updatedDebt: DebtRecord) => {
+    setDebts(prev => prev.map(d => d.id === updatedDebt.id ? updatedDebt : d));
+
+    if (token) {
+      try {
+        await fetch(`/api/debts/${updatedDebt.id}`, {
+          method: 'PUT',
+          headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify(updatedDebt)
+        });
+      } catch (e) {
+        console.error('Debt update sync error:', e);
+      }
+    }
+  };
+
+  const handleDeleteDebt = async (id: string) => {
+    setDebts(prev => prev.filter(d => d.id !== id));
+
+    if (token) {
+      try {
+        await fetch(`/api/debts/${id}`, {
+          method: 'DELETE',
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+      } catch (e) {
+        console.error('Debt deletion sync error:', e);
+      }
+    }
+  };
+
+  const handlePayDebt = async (
+    debtId: string, 
+    paymentAmount: number, 
+    paymentSource: string, 
+    note?: string
+  ) => {
+    const debt = debts.find(d => d.id === debtId);
+    if (!debt) return;
+
+    const isHutang = debt.type === 'hutang';
+    const newRemaining = Math.max(0, debt.remainingAmount - paymentAmount);
+    const newStatus: DebtRecord['status'] = newRemaining === 0 ? 'paid' : 'partially_paid';
+
+    const updatedDebt: DebtRecord = {
+      ...debt,
+      remainingAmount: newRemaining,
+      status: newStatus
+    };
+
+    setDebts(prev => prev.map(d => d.id === debtId ? updatedDebt : d));
+
+    // Also record payment transaction locally
+    const txType = isHutang ? 'expense' : 'income';
+    const title = isHutang 
+      ? `Pembayaran Hutang: ${debt.personName}` 
+      : `Penerimaan Piutang: ${debt.personName}`;
+
+    const newTx: Transaction = {
+      id: `tx-${Date.now()}`,
+      title,
+      amount: paymentAmount,
+      type: txType,
+      category: 'Lain-lain',
+      date: new Date().toISOString().split('T')[0],
+      note: note || (isHutang ? `Cicilan/pelunasan hutang ke ${debt.personName}` : `Penerimaan pelunasan piutang dari ${debt.personName}`),
+      paymentSource: paymentSource || 'Cash'
+    };
+
+    setTransactions(prev => [newTx, ...prev]);
+
+    if (token) {
+      try {
+        await fetch(`/api/debts/${debtId}/pay`, {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ paymentAmount, paymentSource, note })
+        });
+      } catch (e) {
+        console.error('Debt payment sync error:', e);
+      }
+    }
+  };
+
   const syncAddCategory = async (cat: Category) => {
     if (!token) return;
     try {
@@ -402,6 +545,11 @@ export default function App() {
     setToken(null);
     localStorage.removeItem('dk_token');
     localStorage.removeItem('dk_user');
+    setTransactions([]);
+    setSavingGoals([]);
+    setDebts([]);
+    setCreditCards([]);
+    setNotifications([]);
     setActiveTab('dashboard');
   };
 
@@ -623,15 +771,15 @@ export default function App() {
     );
   };
 
-  const handleSimulateCharge = (cardId: string, amount: number, title: string, category: string) => {
+  const handleSimulateCharge = (cardId: string, amount: number, title: string, category: string, date?: string, note?: string) => {
     // Adds a card charge, directly calls handleAddTransaction which handles state updating
     handleAddTransaction({
       title,
       amount,
       type: 'expense',
       category,
-      date: new Date().toISOString().split('T')[0],
-      note: `Transaksi kartu kredit`,
+      date: date || new Date().toISOString().split('T')[0],
+      note: note || `Transaksi kartu kredit`,
       paymentSource: cardId,
       relatedCreditCardId: cardId
     });
@@ -640,7 +788,7 @@ export default function App() {
   // --- SAVE EXPENSE FORM ---
   const handleSaveExpense = (e: React.FormEvent) => {
     e.preventDefault();
-    const amt = parseFloat(expenseAmount);
+    const amt = parseThousand(expenseAmount);
     if (!expenseTitle || isNaN(amt) || amt <= 0) return;
 
     handleAddTransaction({
@@ -664,7 +812,7 @@ export default function App() {
   // --- SAVE INCOME FORM & TRIGGER POST-INCOME WIZARD ---
   const handleSaveIncome = (e: React.FormEvent) => {
     e.preventDefault();
-    const amt = parseFloat(incomeAmount);
+    const amt = parseThousand(incomeAmount);
     if (!incomeTitle || isNaN(amt) || amt <= 0) return;
 
     const createdTx = handleAddTransaction({
@@ -697,7 +845,7 @@ export default function App() {
     e.preventDefault();
     if (!workflowIncomeTx) return;
 
-    const transferAmt = parseFloat(wfAmount);
+    const transferAmt = parseThousand(wfAmount);
     if (isNaN(transferAmt) || transferAmt <= 0) {
       setWfError('Nominal alokasi harus berupa angka positif.');
       return;
@@ -716,7 +864,7 @@ export default function App() {
     e.preventDefault();
     if (!workflowIncomeTx) return;
 
-    const payAmt = parseFloat(wfAmount);
+    const payAmt = parseThousand(wfAmount);
     if (isNaN(payAmt) || payAmt <= 0) {
       setWfError('Nominal pembayaran harus berupa angka positif.');
       return;
@@ -735,40 +883,6 @@ export default function App() {
     // Call bill payment
     handlePayCardBill(wfSelectedCardId, payAmt);
     setWorkflowStep('completed');
-  };
-
-  const handleReceiptScanComplete = (extracted: { title: string; amount: number; category: string; note: string }) => {
-    setExpenseTitle(extracted.title);
-    setExpenseAmount(extracted.amount.toString());
-    setExpenseCategory(extracted.category);
-    setExpenseNote(extracted.note);
-    setExpenseInputMethod('manual'); // Return to manual form tab once populated!
-  };
-
-  const handleInstantSaveExpense = (extracted: { title: string; amount: number; category: string; note: string; paymentSource: string }) => {
-    handleAddTransaction({
-      title: extracted.title,
-      amount: extracted.amount,
-      type: 'expense',
-      category: extracted.category,
-      date: new Date().toISOString().split('T')[0],
-      note: extracted.note,
-      paymentSource: extracted.paymentSource,
-      relatedCreditCardId: extracted.paymentSource.startsWith('card-') ? extracted.paymentSource : undefined
-    });
-
-    // Reset fields & Close modal
-    setExpenseTitle('');
-    setExpenseAmount('');
-    setExpenseNote('');
-    setShowExpenseModal(false);
-
-    // Trigger Notification
-    triggerNotification(
-      'Pencatatan Instan Berhasil',
-      `Pengeluaran "${extracted.title}" sebesar ${formatIDR(extracted.amount)} berhasil dicatat langsung via AI Scan Struk ke database.`,
-      'success'
-    );
   };
 
   // Helper formatting currency
@@ -838,29 +952,34 @@ export default function App() {
           <nav className="space-y-1.5">
             {[
               { id: 'dashboard', label: 'Dashboard', icon: <Wallet className="w-4.5 h-4.5 shrink-0" /> },
-              { id: 'expenses', label: 'Catat Pengeluaran', icon: <Plus className="w-4.5 h-4.5 shrink-0" /> },
-              { id: 'savings', label: 'Sasaran Tabungan', icon: <PiggyBank className="w-4.5 h-4.5 shrink-0" /> },
-              { id: 'cards', label: 'Kartu Kredit', icon: <CardIcon className="w-4.5 h-4.5 shrink-0" /> },
+              { id: 'expenses_savings', label: 'Budget', icon: <ShoppingBag className="w-4.5 h-4.5 shrink-0" /> },
               { id: 'transactions', label: 'Riwayat Transaksi', icon: <History className="w-4.5 h-4.5 shrink-0" /> },
+              { id: 'cards', label: 'Kredit & Pinjaman', icon: <CardIcon className="w-4.5 h-4.5 shrink-0" /> },
               { id: 'settings', label: 'Pengaturan', icon: <SettingsIcon className="w-4.5 h-4.5 shrink-0" /> }
-            ].map((tab) => (
-              <button
-                key={tab.id}
-                onClick={() => {
-                  setActiveTab(tab.id as any);
-                  setMobileMenuOpen(false);
-                }}
-                className={`w-full flex items-center justify-start gap-3.5 px-4 py-3 rounded-xl text-xs sm:text-sm font-semibold transition-all cursor-pointer ${
-                  activeTab === tab.id
-                    ? 'bg-emerald-500 text-slate-950 shadow-md shadow-emerald-500/10'
-                    : 'text-slate-400 hover:text-white hover:bg-slate-850'
-                }`}
-                title={tab.label}
-              >
-                {tab.icon}
-                <span className="block">{tab.label}</span>
-              </button>
-            ))}
+            ].map((tab) => {
+              const isActive = activeTab === tab.id || (tab.id === 'expenses_savings' && (activeTab === 'expenses' || activeTab === 'savings'));
+              return (
+                <button
+                  key={tab.id}
+                  onClick={() => {
+                    setActiveTab(tab.id as any);
+                    if (tab.id === 'expenses_savings') {
+                      setExpensesSavingsSubTab('expenses');
+                    }
+                    setMobileMenuOpen(false);
+                  }}
+                  className={`w-full flex items-center justify-start gap-3.5 px-4 py-3 rounded-xl text-xs sm:text-sm font-semibold transition-all cursor-pointer ${
+                    isActive
+                      ? 'bg-emerald-500 text-slate-950 shadow-md shadow-emerald-500/10 font-bold'
+                      : 'text-slate-400 hover:text-white hover:bg-slate-850'
+                  }`}
+                  title={tab.label}
+                >
+                  {tab.icon}
+                  <span className="block">{tab.label}</span>
+                </button>
+              );
+            })}
           </nav>
         </div>
 
@@ -912,28 +1031,35 @@ export default function App() {
       <div className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-slate-900/95 backdrop-blur-md border-t border-slate-800/80 flex justify-around items-center h-16 px-1 shadow-2xl pb-safe">
         {[
           { id: 'dashboard', label: 'Dashboard', icon: <Wallet className="w-5.5 h-5.5" /> },
-          { id: 'expenses', label: 'Belanja', icon: <Plus className="w-5.5 h-5.5" /> },
-          { id: 'savings', label: 'Tabungan', icon: <PiggyBank className="w-5.5 h-5.5" /> },
-          { id: 'cards', label: 'Kartu', icon: <CardIcon className="w-5.5 h-5.5" /> },
+          { id: 'expenses_savings', label: 'Budget', icon: <ShoppingBag className="w-5.5 h-5.5" /> },
           { id: 'transactions', label: 'Riwayat', icon: <History className="w-5.5 h-5.5" /> },
+          { id: 'cards', label: 'Kredit', icon: <CardIcon className="w-5.5 h-5.5" /> },
           { id: 'settings', label: 'Setelan', icon: <SettingsIcon className="w-5.5 h-5.5" /> }
-        ].map((tab) => (
-          <button
-            key={tab.id}
-            onClick={() => setActiveTab(tab.id as any)}
-            className={`flex flex-col items-center justify-center flex-1 h-full py-2 transition-all relative ${
-              activeTab === tab.id ? 'text-emerald-400 font-bold' : 'text-slate-400'
-            }`}
-          >
-            <div className={`p-1 rounded-lg transition-all duration-300 ${activeTab === tab.id ? 'scale-110 text-emerald-400' : ''}`}>
-              {tab.icon}
-            </div>
-            <span className="text-[9px] mt-0.5 tracking-tight font-medium">{tab.label}</span>
-            {activeTab === tab.id && (
-              <span className="absolute bottom-0 w-8 h-1 bg-emerald-500 rounded-t-full" />
-            )}
-          </button>
-        ))}
+        ].map((tab) => {
+          const isActive = activeTab === tab.id || (tab.id === 'expenses_savings' && (activeTab === 'expenses' || activeTab === 'savings'));
+          return (
+            <button
+              key={tab.id}
+              onClick={() => {
+                setActiveTab(tab.id as any);
+                if (tab.id === 'expenses_savings') {
+                  setExpensesSavingsSubTab('expenses');
+                }
+              }}
+              className={`flex flex-col items-center justify-center flex-1 h-full py-2 transition-all relative ${
+                isActive ? 'text-emerald-400 font-bold' : 'text-slate-400'
+              }`}
+            >
+              <div className={`p-1 rounded-lg transition-all duration-300 ${isActive ? 'scale-110 text-emerald-400' : ''}`}>
+                {tab.icon}
+              </div>
+              <span className="text-[9px] mt-0.5 tracking-tight font-medium text-center leading-tight max-w-[68px] truncate">{tab.label}</span>
+              {isActive && (
+                <span className="absolute bottom-0 w-8 h-1 bg-emerald-500 rounded-t-full" />
+              )}
+            </button>
+          );
+        })}
       </div>
 
       {/* MAIN VIEWPORT */}
@@ -953,17 +1079,20 @@ export default function App() {
           />
         )}
 
-        {activeTab === 'transactions' && (
-          <TransactionsTab
+        {(activeTab === 'expenses_savings' || activeTab === 'expenses' || activeTab === 'savings') && (
+          <ExpensesSavingsTab
             transactions={transactions}
             categories={categories}
+            creditCards={creditCards}
+            onAddTransaction={handleAddTransaction}
             onDeleteTransaction={handleDeleteTransaction}
             onSelectTransaction={setSelectedTransaction}
-          />
-        )}
-
-        {activeTab === 'savings' && (
-          <SavingsTab
+            monthlyBudget={settings.monthlyBudget || 6500000}
+            onUpdateMonthlyBudget={(newBudget) => {
+              const updated = { ...settings, monthlyBudget: newBudget };
+              setSettings(updated);
+              syncSettings(updated);
+            }}
             savingGoals={savingGoals}
             onAddGoal={(goal) => {
               const newGoal = { ...goal, id: `goal-${Date.now()}`, status: 'active' as const };
@@ -975,6 +1104,16 @@ export default function App() {
               syncDeleteSavingGoal(id);
             }}
             onAdjustSavings={handleAdjustSavings}
+            initialSubTab={activeTab === 'savings' ? 'savings' : expensesSavingsSubTab}
+          />
+        )}
+
+        {activeTab === 'transactions' && (
+          <TransactionsTab
+            transactions={transactions}
+            categories={categories}
+            onDeleteTransaction={handleDeleteTransaction}
+            onSelectTransaction={setSelectedTransaction}
           />
         )}
 
@@ -992,17 +1131,11 @@ export default function App() {
             }}
             onPayCardBill={handlePayCardBill}
             onSimulateCharge={handleSimulateCharge}
-          />
-        )}
-
-        {activeTab === 'expenses' && (
-          <ExpensesTab
-            transactions={transactions}
-            categories={categories}
-            creditCards={creditCards}
-            onAddTransaction={handleAddTransaction}
-            onDeleteTransaction={handleDeleteTransaction}
-            onSelectTransaction={setSelectedTransaction}
+            debts={debts}
+            onAddDebt={handleAddDebt}
+            onUpdateDebt={handleUpdateDebt}
+            onDeleteDebt={handleDeleteDebt}
+            onPayDebt={handlePayDebt}
           />
         )}
 
@@ -1024,6 +1157,7 @@ export default function App() {
               syncSettings(newSettings);
             }}
             onDeleteAccount={handleDeleteAccount}
+            onLogout={handleLogout}
           />
         )}
 
@@ -1083,12 +1217,13 @@ export default function App() {
                   <div>
                     <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Nominal (Rp)</label>
                     <input
-                      type="number"
+                      type="text"
+                      inputMode="numeric"
                       required
                       value={incomeAmount}
-                      onChange={(e) => setIncomeAmount(e.target.value)}
-                      placeholder="Contoh: 15000000"
-                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-base sm:text-sm text-slate-800 focus:border-emerald-500 focus:outline-hidden transition"
+                      onChange={(e) => setIncomeAmount(formatThousand(e.target.value))}
+                      placeholder="Contoh: 15.000.000"
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-base sm:text-sm text-slate-800 focus:border-emerald-500 focus:outline-hidden transition font-mono"
                     />
                   </div>
                   <div>
@@ -1187,116 +1322,91 @@ export default function App() {
                 </button>
               </div>
 
-              {/* Tab Selector inside Expense Modal: Manual vs AI Scanner */}
-              <div className="px-5 pt-3 flex border-b border-slate-100 bg-slate-50/50">
-                <button
-                  type="button"
-                  onClick={() => setExpenseInputMethod('manual')}
-                  className={`px-4 py-2 text-xs font-semibold border-b-2 -mb-px transition-all ${expenseInputMethod === 'manual' ? 'border-rose-500 text-rose-600 font-bold' : 'border-transparent text-slate-400 hover:text-slate-700'}`}
-                >
-                  Input Manual
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setExpenseInputMethod('receipt')}
-                  className={`px-4 py-2 text-xs font-semibold border-b-2 -mb-px transition-all flex items-center gap-1.5 ${expenseInputMethod === 'receipt' ? 'border-rose-500 text-rose-600 font-bold' : 'border-transparent text-slate-400 hover:text-slate-700'}`}
-                >
-                  <Receipt className="w-3.5 h-3.5 animate-pulse" /> Scan Struk AI
-                </button>
-              </div>
-
-              {/* Render Selected Input Tab */}
+              {/* Form Content */}
               <div className="p-5 modal-form-scrollable">
-                {expenseInputMethod === 'receipt' ? (
-                  <BarcodeScanner 
-                    onScanComplete={handleReceiptScanComplete} 
-                    onInstantSave={handleInstantSaveExpense}
-                    creditCards={creditCards}
-                  />
-                ) : (
-                  <form onSubmit={handleSaveExpense} className="space-y-4">
+                <form onSubmit={handleSaveExpense} className="space-y-4">
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Nama Toko / Keterangan Belanja</label>
+                    <input
+                      type="text"
+                      required
+                      value={expenseTitle}
+                      onChange={(e) => setExpenseTitle(e.target.value)}
+                      placeholder="Contoh: Starbucks Kopi, Grabcar"
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-base sm:text-sm text-slate-800 focus:border-rose-500 focus:outline-hidden transition"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
                     <div>
-                      <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Nama Toko / Keterangan Belanja</label>
+                      <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Nominal (Rp)</label>
                       <input
                         type="text"
+                        inputMode="numeric"
                         required
-                        value={expenseTitle}
-                        onChange={(e) => setExpenseTitle(e.target.value)}
-                        placeholder="Contoh: Starbucks Kopi, Grabcar"
+                        value={expenseAmount}
+                        onChange={(e) => setExpenseAmount(formatThousand(e.target.value))}
+                        placeholder="Contoh: 85.000"
+                        className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-base sm:text-sm text-slate-800 focus:border-rose-500 focus:outline-hidden transition font-mono"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Kategori</label>
+                      <select
+                        value={expenseCategory}
+                        onChange={(e) => setExpenseCategory(e.target.value)}
+                        className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-base sm:text-sm text-slate-800 focus:border-rose-500 focus:outline-hidden transition"
+                      >
+                        {categories.filter(c => c.type === 'expense').map(c => (
+                          <option key={c.id} value={c.name}>{c.name}</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Sumber Pembayaran</label>
+                      <select
+                        value={expenseSource}
+                        onChange={(e) => setExpenseSource(e.target.value)}
+                        className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-base sm:text-sm text-slate-800 focus:border-rose-500 focus:outline-hidden transition"
+                      >
+                        <option value="Cash">Tunai (Cash Wallet)</option>
+                        <option value="Debit">Rekening Bank (Debit)</option>
+                        {creditCards.map(c => (
+                          <option key={c.id} value={c.id}>Kartu: {c.cardName} ({c.lastFourDigits})</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Catatan Tambahan</label>
+                      <input
+                        type="text"
+                        value={expenseNote}
+                        onChange={(e) => setExpenseNote(e.target.value)}
+                        placeholder="Opsional"
                         className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-base sm:text-sm text-slate-800 focus:border-rose-500 focus:outline-hidden transition"
                       />
                     </div>
+                  </div>
 
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Nominal (Rp)</label>
-                        <input
-                          type="number"
-                          required
-                          value={expenseAmount}
-                          onChange={(e) => setExpenseAmount(e.target.value)}
-                          placeholder="Contoh: 85000"
-                          className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-base sm:text-sm text-slate-800 focus:border-rose-500 focus:outline-hidden transition font-mono"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Kategori</label>
-                        <select
-                          value={expenseCategory}
-                          onChange={(e) => setExpenseCategory(e.target.value)}
-                          className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-base sm:text-sm text-slate-800 focus:border-rose-500 focus:outline-hidden transition"
-                        >
-                          {categories.filter(c => c.type === 'expense').map(c => (
-                            <option key={c.id} value={c.name}>{c.name}</option>
-                          ))}
-                        </select>
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Sumber Pembayaran</label>
-                        <select
-                          value={expenseSource}
-                          onChange={(e) => setExpenseSource(e.target.value)}
-                          className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-base sm:text-sm text-slate-800 focus:border-rose-500 focus:outline-hidden transition"
-                        >
-                          <option value="Cash">Tunai (Cash Wallet)</option>
-                          <option value="Debit">Rekening Bank (Debit)</option>
-                          {creditCards.map(c => (
-                            <option key={c.id} value={c.id}>Kartu: {c.cardName} ({c.lastFourDigits})</option>
-                          ))}
-                        </select>
-                      </div>
-                      <div>
-                        <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Catatan Tambahan</label>
-                        <input
-                          type="text"
-                          value={expenseNote}
-                          onChange={(e) => setExpenseNote(e.target.value)}
-                          placeholder="Opsional"
-                          className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-base sm:text-sm text-slate-800 focus:border-rose-500 focus:outline-hidden transition"
-                        />
-                      </div>
-                    </div>
-
-                    <div className="flex justify-end gap-2.5 pt-4 border-t border-slate-100">
-                      <button
-                        type="button"
-                        onClick={() => setShowExpenseModal(false)}
-                        className="px-4 py-2 text-slate-500 hover:text-slate-800 text-xs font-bold transition cursor-pointer"
-                      >
-                        Batal
-                      </button>
-                      <button
-                        type="submit"
-                        className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs rounded-xl transition cursor-pointer"
-                      >
-                        Simpan Pengeluaran
-                      </button>
-                    </div>
-                  </form>
-                )}
+                  <div className="flex justify-end gap-2.5 pt-4 border-t border-slate-100">
+                    <button
+                      type="button"
+                      onClick={() => setShowExpenseModal(false)}
+                      className="px-4 py-2 text-slate-500 hover:text-slate-800 text-xs font-bold transition cursor-pointer"
+                    >
+                      Batal
+                    </button>
+                    <button
+                      type="submit"
+                      className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs rounded-xl transition cursor-pointer"
+                    >
+                      Simpan Pengeluaran
+                    </button>
+                  </div>
+                </form>
               </div>
             </motion.div>
           </div>
@@ -1399,12 +1509,13 @@ export default function App() {
                       <div>
                         <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Nominal yang Ditransfer (Rp)</label>
                         <input
-                          type="number"
+                          type="text"
+                          inputMode="numeric"
                           required
                           value={wfAmount}
-                          onChange={(e) => setWfAmount(e.target.value)}
-                          placeholder={`Maksimal ${workflowIncomeTx.amount}`}
-                          className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs sm:text-sm text-slate-800"
+                          onChange={(e) => setWfAmount(formatThousand(e.target.value))}
+                          placeholder={`Maksimal ${formatIDR(workflowIncomeTx.amount)}`}
+                          className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs sm:text-sm text-slate-800 font-mono"
                           autoFocus
                         />
                       </div>
@@ -1456,12 +1567,13 @@ export default function App() {
                       <div>
                         <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Nominal Pembayaran (Rp)</label>
                         <input
-                          type="number"
+                          type="text"
+                          inputMode="numeric"
                           required
                           value={wfAmount}
-                          onChange={(e) => setWfAmount(e.target.value)}
-                          placeholder={`Maksimal ${workflowIncomeTx.amount}`}
-                          className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs sm:text-sm text-slate-800"
+                          onChange={(e) => setWfAmount(formatThousand(e.target.value))}
+                          placeholder={`Maksimal ${formatIDR(workflowIncomeTx.amount)}`}
+                          className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs sm:text-sm text-slate-800 font-mono"
                           autoFocus
                         />
                       </div>
