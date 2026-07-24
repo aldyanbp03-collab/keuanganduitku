@@ -734,7 +734,7 @@ export default function App() {
       category: 'Lain-lain',
       date: new Date().toISOString().split('T')[0],
       note: type === 'deposit' ? `Alokasi dana ke goal: ${goalTitle}` : `Tarik saku dari goal: ${goalTitle}`,
-      paymentSource: type === 'deposit' ? 'Debit' : 'Cash',
+      paymentSource: 'Cash',
       relatedSavingGoalId: goalId
     });
   };
@@ -1076,6 +1076,7 @@ export default function App() {
             onOpenIncomeForm={() => setShowIncomeModal(true)}
             onOpenExpenseForm={() => setShowExpenseModal(true)}
             onSelectTransaction={setSelectedTransaction}
+            onAdjustSavings={handleAdjustSavings}
           />
         )}
 
@@ -1120,6 +1121,9 @@ export default function App() {
         {activeTab === 'cards' && (
           <CardsTab
             creditCards={creditCards}
+            transactions={transactions}
+            onDeleteTransaction={handleDeleteTransaction}
+            onSelectTransaction={setSelectedTransaction}
             onAddCard={(card) => {
               const newCard = { ...card, id: `card-${Date.now()}` };
               setCreditCards(prev => [...prev, newCard]);
@@ -1374,6 +1378,7 @@ export default function App() {
                       >
                         <option value="Cash">Tunai (Cash Wallet)</option>
                         <option value="Debit">Rekening Bank (Debit)</option>
+                        <option value="Tabungan">Tabungan (Penarikan/Alokasi Tabungan)</option>
                         {creditCards.map(c => (
                           <option key={c.id} value={c.id}>Kartu: {c.cardName} ({c.lastFourDigits})</option>
                         ))}

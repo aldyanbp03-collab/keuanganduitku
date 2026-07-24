@@ -17,16 +17,27 @@ import {
   Sparkles,
   Zap,
   ArrowDownRight,
+  ArrowUpRight,
   HandCoins,
   X,
   Calendar,
-  FileText
+  FileText,
+  BarChart3,
+  TrendingUp,
+  PieChart,
+  Tag,
+  ChevronDown,
+  ChevronUp,
+  Eye
 } from 'lucide-react';
-import { CreditCard, DebtRecord } from '../types';
+import { CreditCard, DebtRecord, Transaction } from '../types';
 import DebtsTab from './DebtsTab';
 
 interface CardsTabProps {
   creditCards: CreditCard[];
+  transactions?: Transaction[];
+  onDeleteTransaction?: (id: string) => void;
+  onSelectTransaction?: (tx: Transaction) => void;
   onAddCard: (card: Omit<CreditCard, 'id'>) => void;
   onDeleteCard: (id: string) => void;
   onPayCardBill: (id: string, amount: number) => void;
@@ -43,6 +54,9 @@ interface CardsTabProps {
 
 export default function CardsTab({
   creditCards,
+  transactions = [],
+  onDeleteTransaction,
+  onSelectTransaction,
   onAddCard,
   onDeleteCard,
   onPayCardBill,
@@ -59,6 +73,8 @@ export default function CardsTab({
   const [showPayModal, setShowPayModal] = useState<string | null>(null);
   const [showChargeModal, setShowChargeModal] = useState<string | null>(null);
   const [cardToDelete, setCardToDelete] = useState<CreditCard | null>(null);
+  const [txToDelete, setTxToDelete] = useState<Transaction | null>(null);
+  const [expandedCardTxs, setExpandedCardTxs] = useState<{ [cardId: string]: boolean }>({});
 
   // Form states for adding card
   const [cardName, setCardName] = useState('');
@@ -347,6 +363,134 @@ export default function CardsTab({
         )}
       </AnimatePresence>
 
+      {/* Dynamic Credit Cards Analytics Vertical Column Chart */}
+      {creditCards.length > 0 && (() => {
+        const totalLimitAll = creditCards.reduce((acc, c) => acc + c.limitAmount, 0);
+        const totalUsedAll = creditCards.reduce((acc, c) => acc + c.usedAmount, 0);
+        const maxVal = Math.max(...creditCards.map(c => Math.max(c.limitAmount, c.usedAmount)), 1000000);
+
+        const formatCompactIDR = (num: number) => {
+          if (num >= 1_000_000_000) return `Rp ${(num / 1_000_000_000).toFixed(1)}M`;
+          if (num >= 1_000_000) return `Rp ${(num / 1_000_000).toFixed(1)}Jt`;
+          if (num >= 1_000) return `Rp ${(num / 1_000).toFixed(0)}rb`;
+          return `Rp ${num}`;
+        };
+
+        return (
+          <div className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-2xl p-4 sm:p-5 shadow-xs">
+            {/* Header Title & Legend */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4 pb-3 border-b border-slate-100 dark:border-slate-800">
+              <div>
+                <h3 className="font-display font-bold text-slate-800 dark:text-slate-100 text-sm sm:text-base">
+                  Grafik Penggunaan Kartu Kredit
+                </h3>
+                <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                  Perbandingan limit utama dan dana terpakai per kartu ({creditCards.length} Kartu).
+                </p>
+              </div>
+
+              <div className="flex items-center gap-3.5 text-xs font-semibold shrink-0">
+                <div className="flex items-center gap-1 text-emerald-600 dark:text-emerald-400">
+                  <span className="w-2.5 h-2.5 bg-emerald-500 rounded-full inline-block" />
+                  <span>Limit</span>
+                </div>
+                <div className="flex items-center gap-1 text-rose-500 dark:text-rose-400">
+                  <span className="w-2.5 h-2.5 bg-rose-500 rounded-full inline-block" />
+                  <span>Terpakai</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Graphical Vertical Column Chart Area */}
+            <div className="flex gap-2 h-56 mt-2 relative">
+              {/* Y-Axis Labels Column */}
+              <div className="flex flex-col justify-between text-[9px] text-slate-400 font-mono text-right w-11 pb-6 select-none shrink-0">
+                <span>{formatCompactIDR(maxVal)}</span>
+                <span>{formatCompactIDR(maxVal * 0.66)}</span>
+                <span>{formatCompactIDR(maxVal * 0.33)}</span>
+                <span>0</span>
+              </div>
+
+              {/* Chart Grid Container */}
+              <div className="relative flex-1 h-full pb-6">
+                {/* Background horizontal grid lines */}
+                <div className="absolute inset-x-0 top-0 bottom-6 flex flex-col justify-between pointer-events-none">
+                  <div className="border-b border-slate-100 dark:border-slate-800/80 w-full h-0" />
+                  <div className="border-b border-slate-100 dark:border-slate-800/80 w-full h-0" />
+                  <div className="border-b border-slate-100 dark:border-slate-800/80 w-full h-0" />
+                  <div className="border-b border-slate-200 dark:border-slate-700 w-full h-0" />
+                </div>
+
+                {/* Vertical Column Bars for Each Credit Card */}
+                <div className="relative z-10 h-full flex items-end justify-around px-2 sm:px-4">
+                  {creditCards.map((card) => {
+                    const limitHeight = maxVal > 0 ? (card.limitAmount / maxVal) * 85 : 0;
+                    const usedHeight = maxVal > 0 ? (card.usedAmount / maxVal) * 85 : 0;
+
+                    return (
+                      <div key={`chart-col-${card.id}`} className="flex flex-col items-center gap-1.5 group h-full justify-end min-w-[50px]">
+                        <div className="flex items-end gap-1.5 h-[85%] pb-0.5">
+                          {/* Limit Bar (Emerald) */}
+                          <div
+                            className="w-3.5 sm:w-4 bg-emerald-500/85 hover:bg-emerald-500 rounded-t-sm transition-all duration-300 relative group cursor-pointer shadow-2xs"
+                            style={{ height: `${Math.max(card.limitAmount > 0 ? 4 : 0, limitHeight)}%` }}
+                          >
+                            <span className="absolute -top-7 left-1/2 -translate-x-1/2 bg-slate-900 text-white text-[9px] font-mono px-2 py-0.5 rounded-sm opacity-0 group-hover:opacity-100 transition-opacity duration-200 whitespace-nowrap z-20 shadow-md">
+                              Limit: {formatIDR(card.limitAmount)}
+                            </span>
+                          </div>
+
+                          {/* Used Bar (Rose) */}
+                          <div
+                            className="w-3.5 sm:w-4 bg-rose-500/85 hover:bg-rose-500 rounded-t-sm transition-all duration-300 relative group cursor-pointer shadow-2xs"
+                            style={{ height: `${Math.max(card.usedAmount > 0 ? 4 : 0, usedHeight)}%` }}
+                          >
+                            <span className="absolute -top-7 left-1/2 -translate-x-1/2 bg-slate-900 text-white text-[9px] font-mono px-2 py-0.5 rounded-sm opacity-0 group-hover:opacity-100 transition-opacity duration-200 whitespace-nowrap z-20 shadow-md">
+                              Terpakai: {formatIDR(card.usedAmount)}
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* X-Axis Card Label */}
+                        <div className="text-center">
+                          <span className="text-[10px] font-bold text-slate-700 dark:text-slate-200 block truncate max-w-[70px]">
+                            {card.cardName}
+                          </span>
+                          <span className="text-[8px] font-mono text-slate-400 block -mt-0.5">
+                            ••{card.lastFourDigits}
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+
+            {/* Bottom Summary Indicators matching screenshot style */}
+            <div className="mt-3 pt-3 border-t border-slate-100 dark:border-slate-800 grid grid-cols-2 gap-3 text-center">
+              <div className="bg-slate-50/80 dark:bg-slate-800/60 rounded-xl p-2.5 border border-slate-100 dark:border-slate-800">
+                <span className="text-[9px] font-bold text-slate-400 dark:text-slate-400 uppercase tracking-wider block">
+                  TOTAL LIMIT KREDIT
+                </span>
+                <span className="text-xs sm:text-sm font-bold text-emerald-600 dark:text-emerald-400 font-mono flex items-center justify-center gap-1 mt-0.5">
+                  <ArrowUpRight className="w-3.5 h-3.5 shrink-0" /> {formatIDR(totalLimitAll)}
+                </span>
+              </div>
+
+              <div className="bg-slate-50/80 dark:bg-slate-800/60 rounded-xl p-2.5 border border-slate-100 dark:border-slate-800">
+                <span className="text-[9px] font-bold text-slate-400 dark:text-slate-400 uppercase tracking-wider block">
+                  TOTAL TERPAKAI
+                </span>
+                <span className="text-xs sm:text-sm font-bold text-rose-500 dark:text-rose-400 font-mono flex items-center justify-center gap-1 mt-0.5">
+                  <ArrowDownRight className="w-3.5 h-3.5 shrink-0" /> {formatIDR(totalUsedAll)}
+                </span>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
       {/* Interactive Credit Card Deck */}
       <div className="grid grid-cols-1 md:grid-cols-1 lg:grid-cols-2 gap-6">
         {creditCards.map((card) => {
@@ -468,6 +612,102 @@ export default function CardsTab({
                   <ArrowDownRight className="w-3.5 h-3.5 text-rose-500" /> Transaksi Baru
                 </button>
               </div>
+
+              {/* Per-Card Transaction History List */}
+              {(() => {
+                const cardTxs = transactions.filter(t => t.relatedCreditCardId === card.id || t.paymentSource === card.id);
+                const isExpanded = expandedCardTxs[card.id] !== false;
+
+                return (
+                  <div className="mt-5 pt-4 border-t border-slate-100 dark:border-slate-800">
+                    <div className="flex items-center justify-between mb-2">
+                      <button
+                        type="button"
+                        onClick={() => setExpandedCardTxs(prev => ({ ...prev, [card.id]: !isExpanded }))}
+                        className="flex items-center gap-1.5 text-xs font-extrabold text-slate-800 dark:text-slate-200 hover:text-emerald-600 dark:hover:text-emerald-400 transition cursor-pointer"
+                      >
+                        <Receipt className="w-3.5 h-3.5 text-emerald-500" />
+                        <span>Transaksi {card.cardName}</span>
+                        <span className="text-[10px] font-mono bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded text-slate-600 dark:text-slate-300">
+                          {cardTxs.length}
+                        </span>
+                        {isExpanded ? <ChevronUp className="w-3.5 h-3.5 text-slate-400" /> : <ChevronDown className="w-3.5 h-3.5 text-slate-400" />}
+                      </button>
+
+                      {cardTxs.length > 0 && (
+                        <span className="text-[10px] font-mono font-bold text-rose-600 dark:text-rose-400">
+                          Total: -{formatIDR(cardTxs.reduce((sum, t) => sum + t.amount, 0))}
+                        </span>
+                      )}
+                    </div>
+
+                    <AnimatePresence>
+                      {isExpanded && (
+                        <motion.div
+                          initial={{ opacity: 0, height: 0 }}
+                          animate={{ opacity: 1, height: 'auto' }}
+                          exit={{ opacity: 0, height: 0 }}
+                          className="overflow-hidden"
+                        >
+                          {cardTxs.length === 0 ? (
+                            <div className="p-3 text-center bg-slate-50 dark:bg-slate-800/50 rounded-xl border border-dashed border-slate-200 dark:border-slate-700 text-slate-400 text-[11px]">
+                              Belum ada riwayat transaksi gesek untuk kartu ini.
+                            </div>
+                          ) : (
+                            <div className="space-y-1.5 max-h-[220px] overflow-y-auto pr-1 mt-1">
+                              {cardTxs.map(tx => (
+                                <div
+                                  key={tx.id}
+                                  onClick={() => onSelectTransaction && onSelectTransaction(tx)}
+                                  className="p-2.5 bg-slate-50 dark:bg-slate-800/80 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl border border-slate-200/60 dark:border-slate-700/60 flex items-center justify-between gap-2 transition cursor-pointer group"
+                                >
+                                  <div className="flex items-center gap-2 min-w-0">
+                                    <div className="p-1.5 bg-rose-100 dark:bg-rose-950/60 text-rose-600 dark:text-rose-400 rounded-lg shrink-0">
+                                      <Tag className="w-3 h-3" />
+                                    </div>
+                                    <div className="min-w-0">
+                                      <div className="flex items-center gap-1.5">
+                                        <span className="text-xs font-bold text-slate-800 dark:text-slate-100 truncate group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition-colors">
+                                          {tx.title}
+                                        </span>
+                                        <span className="text-[9px] font-semibold text-slate-400 bg-white dark:bg-slate-900 px-1.5 py-0.2 rounded border border-slate-200 dark:border-slate-700 shrink-0">
+                                          {tx.category}
+                                        </span>
+                                      </div>
+                                      <span className="text-[10px] text-slate-400 font-mono block">
+                                        {tx.date} {tx.note ? `• ${tx.note}` : ''}
+                                      </span>
+                                    </div>
+                                  </div>
+
+                                  <div className="flex items-center gap-2 shrink-0">
+                                    <span className="text-xs font-bold font-mono text-rose-600 dark:text-rose-400">
+                                      -{formatIDR(tx.amount)}
+                                    </span>
+                                    {onDeleteTransaction && (
+                                      <button
+                                        type="button"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          setTxToDelete(tx);
+                                        }}
+                                        className="p-1 text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/50 rounded-md transition cursor-pointer"
+                                        title="Hapus Transaksi"
+                                      >
+                                        <Trash2 className="w-3.5 h-3.5" />
+                                      </button>
+                                    )}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  </div>
+                );
+              })()}
 
               {/* Pay Bill Modal Overlay - Fixed Popup */}
               <AnimatePresence>
@@ -786,6 +1026,57 @@ export default function CardsTab({
                     setCardToDelete(null);
                   }}
                   className="flex-1 py-2 text-xs font-bold bg-red-600 hover:bg-red-505 hover:bg-red-500 text-white rounded-lg shadow-xs hover:shadow-sm transition cursor-pointer"
+                >
+                  Ya, Hapus
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Custom Confirmation Dialog for Card Transaction Deletion */}
+      <AnimatePresence>
+        {txToDelete && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setTxToDelete(null)}
+              className="absolute inset-0 bg-slate-950/60 backdrop-blur-xs"
+            />
+            
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 10 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 10 }}
+              className="bg-white border border-slate-200 rounded-xl w-full max-w-[340px] shadow-2xl relative z-10 p-5 text-center overflow-hidden"
+            >
+              <div className="mx-auto w-12 h-12 bg-red-50 text-red-500 border border-red-100 rounded-full flex items-center justify-center mb-3">
+                <Trash2 className="w-5 h-5" />
+              </div>
+              
+              <h3 className="font-display font-bold text-slate-800 text-sm mb-1.5">Hapus Transaksi Kartu?</h3>
+              <p className="text-slate-500 text-xs leading-relaxed mb-5">
+                Apakah Anda yakin ingin menghapus catatan transaksi <strong className="text-slate-700">"{txToDelete.title}"</strong> ({formatIDR(txToDelete.amount)})?
+              </p>
+              
+              <div className="flex gap-2 justify-center">
+                <button
+                  type="button"
+                  onClick={() => setTxToDelete(null)}
+                  className="flex-1 py-2 text-xs font-bold text-slate-500 hover:text-slate-850 hover:bg-slate-50 border border-slate-200 rounded-lg transition cursor-pointer"
+                >
+                  Batal
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (onDeleteTransaction) onDeleteTransaction(txToDelete.id);
+                    setTxToDelete(null);
+                  }}
+                  className="flex-1 py-2 text-xs font-bold bg-red-600 hover:bg-red-500 text-white rounded-lg shadow-xs hover:shadow-sm transition cursor-pointer"
                 >
                   Ya, Hapus
                 </button>

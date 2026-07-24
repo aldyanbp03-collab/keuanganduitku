@@ -25,12 +25,13 @@ import {
   PlusCircle,
   Clock
 } from 'lucide-react';
-import { Transaction, Category, CreditCard } from '../types';
+import { Transaction, Category, CreditCard, SavingGoal } from '../types';
 
 interface ExpensesTabProps {
   transactions: Transaction[];
   categories: Category[];
   creditCards: CreditCard[];
+  savingGoals?: SavingGoal[];
   onAddTransaction: (tx: Omit<Transaction, 'id'>) => void;
   onDeleteTransaction: (id: string) => void;
   onSelectTransaction?: (tx: Transaction) => void;
@@ -42,6 +43,7 @@ export default function ExpensesTab({
   transactions,
   categories,
   creditCards,
+  savingGoals = [],
   onAddTransaction,
   onDeleteTransaction,
   onSelectTransaction,
@@ -303,8 +305,8 @@ export default function ExpensesTab({
       <div className="bg-white border border-slate-200/80 rounded-2xl p-4 sm:p-5 shadow-xs">
         <div className="flex items-center justify-between gap-3 pb-3 border-b border-slate-100 mb-3">
           <div className="min-w-0">
-            <h4 className="font-display font-bold text-slate-800 text-sm truncate">Log Belanja Terakhir</h4>
-            <p className="text-xs text-slate-500 font-normal mt-0.5 truncate">Histori pengeluaran yang tercatat di sistem</p>
+            <h4 className="font-display font-bold text-slate-800 text-sm">Log Belanja Terakhir</h4>
+            <p className="text-xs text-slate-500 font-normal mt-0.5 leading-snug">Histori pengeluaran yang tercatat di sistem</p>
           </div>
           <span className="text-xs font-semibold text-slate-600 bg-slate-100 px-3 py-1 rounded-full shrink-0 whitespace-nowrap">
             {expensesList.length} Transaksi
@@ -318,42 +320,50 @@ export default function ExpensesTab({
           </div>
         ) : (
           <div className="divide-y divide-slate-100/75 max-h-[350px] overflow-y-auto pr-1">
-            {expensesList.slice(0, 10).map((tx) => (
-              <div 
-                key={tx.id} 
-                onClick={() => onSelectTransaction?.(tx)}
-                className="py-3 flex items-center justify-between group hover:bg-slate-50/75 px-2 rounded-xl transition cursor-pointer active:scale-[0.99]"
-                title="Klik untuk detail & ubah"
-              >
-                <div className="flex items-center gap-3 min-w-0">
-                  <div className="w-8 h-8 rounded-lg bg-rose-50 border border-rose-100 text-rose-500 flex items-center justify-center shrink-0">
-                    <ShoppingBag className="w-4 h-4" />
-                  </div>
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs font-bold text-slate-800 truncate group-hover:text-emerald-700 transition-colors">{tx.title}</span>
-                      <span className="text-[9px] font-semibold text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200/60 shrink-0">{tx.category}</span>
-                    </div>
-                    <span className="text-[10px] text-slate-400 block mt-0.5 font-mono">{tx.date} • {tx.paymentSource === 'Cash' || tx.paymentSource === 'Debit' ? tx.paymentSource : 'Kartu Kredit'}</span>
-                  </div>
-                </div>
+            {expensesList.slice(0, 10).map((tx) => {
+              const sourceLabel = 
+                tx.paymentSource === 'Cash' ? 'Tunai' :
+                tx.paymentSource === 'Debit' ? 'Debit' :
+                tx.paymentSource === 'Tabungan' || tx.relatedSavingGoalId || tx.paymentSource.startsWith('goal-') ? 'Tabungan' :
+                'Kartu Kredit';
 
-                <div className="flex items-center gap-3 shrink-0">
-                  <span className="text-xs sm:text-sm font-bold font-mono text-slate-850">-{formatIDR(tx.amount)}</span>
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation(); // Avoid opening details popup
-                      setTxToDelete(tx);
-                    }}
-                    className="p-1.5 text-rose-600 bg-rose-50 hover:bg-rose-100 border border-rose-200/80 rounded-lg transition cursor-pointer shrink-0 shadow-2xs"
-                    title="Hapus Catatan"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </button>
+              return (
+                <div 
+                  key={tx.id} 
+                  onClick={() => onSelectTransaction?.(tx)}
+                  className="py-3 flex items-center justify-between group hover:bg-slate-50/75 px-2 rounded-xl transition cursor-pointer active:scale-[0.99]"
+                  title="Klik untuk detail & ubah"
+                >
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="w-8 h-8 rounded-lg bg-rose-50 border border-rose-100 text-rose-500 flex items-center justify-center shrink-0">
+                      <ShoppingBag className="w-4 h-4" />
+                    </div>
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-bold text-slate-800 truncate group-hover:text-emerald-700 transition-colors">{tx.title}</span>
+                        <span className="text-[9px] font-semibold text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200/60 shrink-0">{tx.category}</span>
+                      </div>
+                      <span className="text-[10px] text-slate-400 block mt-0.5 font-mono">{tx.date} • {sourceLabel}</span>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-3 shrink-0">
+                    <span className="text-xs sm:text-sm font-bold font-mono text-slate-850">-{formatIDR(tx.amount)}</span>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation(); // Avoid opening details popup
+                        setTxToDelete(tx);
+                      }}
+                      className="p-1.5 text-rose-600 bg-rose-50 hover:bg-rose-100 border border-rose-200/80 rounded-lg transition cursor-pointer shrink-0 shadow-2xs"
+                      title="Hapus Catatan"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>
@@ -513,6 +523,7 @@ export default function ExpensesTab({
                     >
                       <option value="Cash">Tunai (Cash)</option>
                       <option value="Debit">Debit Rekening</option>
+                      <option value="Tabungan">Tabungan (Penarikan/Alokasi Tabungan)</option>
                       {creditCards.map(cc => (
                         <option key={cc.id} value={cc.id}>Kartu: {cc.cardName}</option>
                       ))}

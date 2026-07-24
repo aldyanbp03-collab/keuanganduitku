@@ -153,6 +153,7 @@ export default function EditTransactionModal({
                   <>
                     <option value="Cash">Tunai (Cash)</option>
                     <option value="Debit">Debit</option>
+                    <option value="Tabungan">Tabungan</option>
                     {creditCards.map(cc => (
                       <option key={cc.id} value={cc.id}>Kartu: {cc.cardName}</option>
                     ))}

@@ -158,7 +158,10 @@
 }
 
 /* Card background - Mid level */
-.dark .bg-white {
+.dark .bg-white,
+.dark .bg-white\/95,
+.dark .bg-white\/90,
+.dark .bg-white\/80 {
   background-color: #111827 !important; /* Premium dark slate card */
   border-color: rgba(255, 255, 255, 0.08) !important;
 }

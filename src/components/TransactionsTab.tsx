@@ -352,7 +352,10 @@ export default function TransactionsTab({
                         </span>
                         <span className="text-slate-300">•</span>
                         <span className="font-semibold text-slate-500">
-                          {tx.paymentSource === 'Cash' || tx.paymentSource === 'Debit' ? tx.paymentSource : 'Kartu Kredit'}
+                          {tx.paymentSource === 'Cash' ? 'Tunai' :
+                           tx.paymentSource === 'Debit' ? 'Debit' :
+                           tx.paymentSource === 'Tabungan' || tx.relatedSavingGoalId || tx.paymentSource.startsWith('goal-') ? 'Tabungan' :
+                           'Kartu Kredit'}
                         </span>
                       </div>
                     </div>

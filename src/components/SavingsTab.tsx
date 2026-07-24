@@ -305,37 +305,41 @@ export default function SavingsTab({
               <AnimatePresence>
                 {showDepositModal === goal.id && (
                   <motion.div
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    exit={{ opacity: 0 }}
-                    className="absolute inset-0 bg-white/95 backdrop-blur-xs rounded-2xl p-5 flex flex-col justify-between z-10"
+                    initial={{ opacity: 0, scale: 0.95 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    exit={{ opacity: 0, scale: 0.95 }}
+                    className="absolute inset-0 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xl rounded-2xl p-5 flex flex-col justify-between z-10"
                   >
-                    <form onSubmit={(e) => handleDepositSubmit(e, goal.id)} className="space-y-4 flex flex-col justify-between h-full">
+                    <form onSubmit={(e) => handleDepositSubmit(e, goal.id)} className="space-y-3 flex flex-col justify-between h-full">
                       <div>
-                        <h4 className="font-display font-bold text-slate-800 text-sm">Setor Dana ke Tabungan</h4>
-                        <p className="text-[11px] text-slate-500 mt-0.5">Sisihkan uang saku/gaji Anda ke {goal.title}.</p>
+                        <h4 className="font-display font-bold text-slate-800 dark:text-slate-100 text-sm">Setor Dana ke Tabungan</h4>
+                        <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">Sisihkan saldo tunai Anda ke {goal.title}.</p>
                         
                         {errorMsg && (
-                          <div className="p-2 bg-red-50 border border-red-100 text-red-600 text-[10px] rounded-lg mt-2">
+                          <div className="p-2 bg-red-50 border border-red-100 text-red-600 dark:bg-red-950/40 dark:border-red-900/60 dark:text-red-300 text-[10px] rounded-lg mt-2">
                             {errorMsg}
                           </div>
                         )}
 
-                        <div className="mt-4">
-                          <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Nominal Setoran (Rp)</label>
+                        <div className="mt-3">
+                          <label className="block text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1">Nominal Setoran (Rp)</label>
                           <input
                             type="text"
                             inputMode="numeric"
                             value={adjustAmount}
                             onChange={(e) => setAdjustAmount(formatThousand(e.target.value))}
                             placeholder="Contoh: 500.000"
-                            className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-1.5 text-xs text-slate-800 focus:border-emerald-500 focus:outline-hidden font-mono"
+                            className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-800 dark:text-slate-100 placeholder:text-slate-400 focus:border-emerald-500 focus:outline-hidden font-mono"
                             autoFocus
                           />
+                          <div className="mt-2 text-[10px] font-medium text-emerald-600 dark:text-emerald-400 flex items-center gap-1.5">
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0"></span>
+                            Otomatis memotong Saldo Tunai (Cash)
+                          </div>
                         </div>
                       </div>
 
-                      <div className="flex justify-end gap-2 pt-2">
+                      <div className="flex justify-end gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
                         <button
                           type="button"
                           onClick={() => {
@@ -343,13 +347,13 @@ export default function SavingsTab({
                             setErrorMsg('');
                             setShowDepositModal(null);
                           }}
-                          className="px-3 py-1.5 text-slate-500 hover:text-slate-800 text-xs font-bold"
+                          className="px-3 py-1.5 text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100 text-xs font-bold transition"
                         >
                           Batal
                         </button>
                         <button
                           type="submit"
-                          className="px-3 py-1.5 bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-bold text-xs rounded-lg"
+                          className="px-3.5 py-1.5 bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-bold text-xs rounded-lg transition shadow-xs"
                         >
                           Konfirmasi Setor
                         </button>
@@ -363,37 +367,41 @@ export default function SavingsTab({
               <AnimatePresence>
                 {showWithdrawModal === goal.id && (
                   <motion.div
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    exit={{ opacity: 0 }}
-                    className="absolute inset-0 bg-white/95 backdrop-blur-xs rounded-2xl p-5 flex flex-col justify-between z-10"
+                    initial={{ opacity: 0, scale: 0.95 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    exit={{ opacity: 0, scale: 0.95 }}
+                    className="absolute inset-0 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xl rounded-2xl p-5 flex flex-col justify-between z-10"
                   >
-                    <form onSubmit={(e) => handleWithdrawSubmit(e, goal)} className="space-y-4 flex flex-col justify-between h-full">
+                    <form onSubmit={(e) => handleWithdrawSubmit(e, goal)} className="space-y-3 flex flex-col justify-between h-full">
                       <div>
-                        <h4 className="font-display font-bold text-slate-800 text-sm">Tarik Dana Tabungan</h4>
-                        <p className="text-[11px] text-slate-500 mt-0.5">Tarik dana dari {goal.title} kembali ke Saldo Tunai.</p>
+                        <h4 className="font-display font-bold text-slate-800 dark:text-slate-100 text-sm">Tarik Dana Tabungan</h4>
+                        <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">Tarik dana dari {goal.title} kembali ke Saldo Tunai.</p>
                         
                         {errorMsg && (
-                          <div className="p-2 bg-red-50 border border-red-100 text-red-600 text-[10px] rounded-lg mt-2">
+                          <div className="p-2 bg-red-50 border border-red-100 text-red-600 dark:bg-red-950/40 dark:border-red-900/60 dark:text-red-300 text-[10px] rounded-lg mt-2">
                             {errorMsg}
                           </div>
                         )}
 
-                        <div className="mt-4">
-                          <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Nominal Tarik (Rp)</label>
+                        <div className="mt-3">
+                          <label className="block text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1">Nominal Tarik (Rp)</label>
                           <input
                             type="text"
                             inputMode="numeric"
                             value={adjustAmount}
                             onChange={(e) => setAdjustAmount(formatThousand(e.target.value))}
                             placeholder={`Maksimal ${formatIDR(goal.currentAmount)}`}
-                            className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-1.5 text-xs text-slate-800 focus:border-emerald-500 focus:outline-hidden font-mono"
+                            className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-800 dark:text-slate-100 placeholder:text-slate-400 focus:border-emerald-500 focus:outline-hidden font-mono"
                             autoFocus
                           />
+                          <div className="mt-2 text-[10px] font-medium text-indigo-600 dark:text-indigo-400 flex items-center gap-1.5">
+                            <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 shrink-0"></span>
+                            Otomatis menambah Saldo Tunai (Cash)
+                          </div>
                         </div>
                       </div>
 
-                      <div className="flex justify-end gap-2 pt-2">
+                      <div className="flex justify-end gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
                         <button
                           type="button"
                           onClick={() => {
@@ -401,13 +409,13 @@ export default function SavingsTab({
                             setErrorMsg('');
                             setShowWithdrawModal(null);
                           }}
-                          className="px-3 py-1.5 text-slate-500 hover:text-slate-800 text-xs font-bold"
+                          className="px-3 py-1.5 text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100 text-xs font-bold transition"
                         >
                           Batal
                         </button>
                         <button
                           type="submit"
-                          className="px-3 py-1.5 bg-rose-500 hover:bg-rose-600 text-white font-bold text-xs rounded-lg"
+                          className="px-3.5 py-1.5 bg-rose-500 hover:bg-rose-600 text-white font-bold text-xs rounded-lg transition shadow-xs"
                         >
                           Konfirmasi Tarik
                         </button>

@@ -93,6 +93,7 @@ export default function ExpensesSavingsTab({
           transactions={transactions}
           categories={categories}
           creditCards={creditCards}
+          savingGoals={savingGoals}
           onAddTransaction={onAddTransaction}
           onDeleteTransaction={onDeleteTransaction}
           onSelectTransaction={onSelectTransaction}

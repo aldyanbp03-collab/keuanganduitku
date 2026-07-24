@@ -19,9 +19,12 @@ import {
   Receipt,
   Sparkles,
   Zap,
-  Info
+  Info,
+  X,
+  Send
 } from 'lucide-react';
 import { Transaction, SavingGoal, CreditCard, Category } from '../types';
+import { formatThousand, parseThousand } from '../utils/format';
 
 interface DashboardTabProps {
   transactions: Transaction[];
@@ -32,6 +35,7 @@ interface DashboardTabProps {
   onOpenIncomeForm: () => void;
   onOpenExpenseForm: () => void;
   onSelectTransaction?: (tx: Transaction) => void;
+  onAdjustSavings?: (goalId: string, amount: number, type: 'deposit' | 'withdraw') => void;
 }
 
 export default function DashboardTab({
@@ -42,8 +46,15 @@ export default function DashboardTab({
   profileName,
   onOpenIncomeForm,
   onOpenExpenseForm,
-  onSelectTransaction
+  onSelectTransaction,
+  onAdjustSavings
 }: DashboardTabProps) {
+  // Transfer to Savings Modal State
+  const [showTransferModal, setShowTransferModal] = useState(false);
+  const [selectedGoalId, setSelectedGoalId] = useState('');
+  const [transferAmount, setTransferAmount] = useState('');
+  const [errorMsg, setErrorMsg] = useState('');
+  const [transferSuccessMsg, setTransferSuccessMsg] = useState('');
   // Calculate stats
   const totalIncome = transactions
     .filter(t => t.type === 'income')
@@ -74,17 +85,14 @@ export default function DashboardTab({
   const totalUsed = creditCards.reduce((acc, c) => acc + c.usedAmount, 0);
   const creditCardLimitRemaining = totalLimit - totalUsed;
 
-  // Calculate dynamic 4th metric: Total Pengeluaran Diambil Dari Uang Tabungan & Penghasilan
-  // It is the sum of expenses paid with Cash/Debit + transfers to Savings Goals
-  const expensesFromIncome = transactions
-    .filter(t => t.type === 'expense' && (t.paymentSource === 'Cash' || t.paymentSource === 'Debit'))
+  // Calculate 4th metric: Total Pengeluaran Tabungan (Strictly expenses from Savings Goals / Tabungan)
+  // Does NOT include Cash or Credit Cards!
+  const totalExpenseTabungan = transactions
+    .filter(t => {
+      if (t.type !== 'expense') return false;
+      return Boolean(t.relatedSavingGoalId) || t.paymentSource === 'Tabungan' || t.paymentSource.startsWith('goal-') || savingGoals.some(g => g.id === t.paymentSource);
+    })
     .reduce((acc, curr) => acc + curr.amount, 0);
-
-  const expensesToSavings = transactions
-    .filter(t => t.type === 'expense' && t.relatedSavingGoalId)
-    .reduce((acc, curr) => acc + curr.amount, 0);
-
-  const totalExpenseTabunganPenghasilan = expensesFromIncome + expensesToSavings;
 
   // Group transactions by category for expense analysis
   const expenseTransactions = transactions.filter(t => t.type === 'expense');
@@ -160,7 +168,7 @@ export default function DashboardTab({
       value: formatIDR(totalBalance),
       icon: <Wallet className="w-4 h-4 text-emerald-600" />,
       color: 'bg-emerald-50 text-emerald-700 border-emerald-100',
-      desc: 'Dompet Tunai (Khusus Cash)'
+      desc: `Terpakai: ${formatIDR(cashExpense)} (Tunai)`
     },
     {
       id: 'tabungan',
@@ -179,12 +187,12 @@ export default function DashboardTab({
       desc: `Terpakai: ${formatIDR(totalUsed)}`
     },
     {
-      id: 'pengeluaran-utama',
-      title: 'Pengeluaran Tabungan/Gaji',
-      value: formatIDR(totalExpenseTabunganPenghasilan),
+      id: 'pengeluaran-tabungan',
+      title: 'Pengeluaran Tabungan',
+      value: formatIDR(totalExpenseTabungan),
       icon: <Receipt className="w-4 h-4 text-rose-600" />,
       color: 'bg-rose-50 text-rose-700 border-rose-100',
-      desc: 'Tunai, Debit & Transfer Tabungan'
+      desc: 'Khusus Alokasi & Transfer Tabungan'
     }
   ];
 
@@ -209,18 +217,32 @@ export default function DashboardTab({
           </div>
           
           {/* Main Action Buttons */}
-          <div className="flex items-center gap-2 shrink-0">
+          <div className="flex flex-wrap items-center gap-2 shrink-0">
             <button
               onClick={onOpenIncomeForm}
-              className="px-3.5 py-2 bg-emerald-500 hover:bg-emerald-650 text-slate-950 font-bold text-xs rounded-xl transition flex items-center gap-1 cursor-pointer"
+              className="px-3.5 py-2 bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-bold text-xs rounded-xl transition flex items-center gap-1 cursor-pointer shadow-xs"
             >
               <PlusCircle className="w-3.5 h-3.5" /> Pemasukan
             </button>
             <button
               onClick={onOpenExpenseForm}
-              className="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-white font-bold text-xs border border-slate-700 rounded-xl transition flex items-center gap-1 cursor-pointer"
+              className="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-white font-bold text-xs border border-slate-700 rounded-xl transition flex items-center gap-1 cursor-pointer shadow-xs"
             >
               <MinusCircle className="w-3.5 h-3.5 text-emerald-400" /> Pengeluaran
+            </button>
+            <button
+              onClick={() => {
+                if (savingGoals.length > 0 && !selectedGoalId) {
+                  setSelectedGoalId(savingGoals[0].id);
+                }
+                setErrorMsg('');
+                setTransferSuccessMsg('');
+                setShowTransferModal(true);
+              }}
+              className="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs rounded-xl transition flex items-center gap-1.5 cursor-pointer shadow-xs"
+            >
+              <PiggyBank className="w-3.5 h-3.5 text-indigo-200" />
+              <span>Transfer Tabungan</span>
             </button>
           </div>
         </div>
@@ -231,19 +253,19 @@ export default function DashboardTab({
         {statsCards.map((card) => (
           <div 
             key={card.id} 
-            className="bg-white border border-slate-200/80 rounded-xl p-3.5 shadow-2xs flex flex-col justify-between hover:border-slate-300 transition-all"
+            className="bg-white border border-slate-200/80 rounded-xl p-3.5 shadow-2xs flex flex-col justify-between hover:border-slate-300 transition-all min-w-0"
           >
-            <div className="flex items-center justify-between gap-2">
-              <span className="text-[10px] sm:text-xs font-semibold text-slate-500 truncate" title={card.title}>{card.title}</span>
+            <div className="flex items-center justify-between gap-1.5 min-w-0">
+              <span className="text-xs font-semibold text-slate-500 leading-tight block min-w-0" title={card.title}>{card.title}</span>
               <div className={`p-1.5 rounded-lg border shrink-0 ${card.color}`}>
                 {card.icon}
               </div>
             </div>
-            <div className="mt-2.5">
-              <h3 className="text-sm sm:text-base md:text-lg font-display font-extrabold text-slate-900 tracking-tight font-mono truncate">
+            <div className="mt-2.5 min-w-0">
+              <h3 className="text-sm sm:text-base md:text-lg font-display font-extrabold text-slate-900 tracking-tight font-mono whitespace-nowrap overflow-x-auto no-scrollbar">
                 {card.value}
               </h3>
-              <p className="text-[9px] text-slate-400 truncate mt-0.5" title={card.desc}>{card.desc}</p>
+              <p className="text-[10px] sm:text-xs text-slate-400 mt-0.5 leading-normal" title={card.desc}>{card.desc}</p>
             </div>
           </div>
         ))}
@@ -429,7 +451,12 @@ export default function DashboardTab({
                     <span className={`text-xs sm:text-sm font-bold font-mono ${tx.type === 'income' ? 'text-emerald-600' : 'text-slate-850'}`}>
                       {tx.type === 'income' ? '+' : '-'} {formatIDR(tx.amount)}
                     </span>
-                    <span className="text-[9px] block text-slate-450 mt-0.5 font-mono">{tx.paymentSource === 'Cash' || tx.paymentSource === 'Debit' ? tx.paymentSource : 'Kartu Kredit'}</span>
+                    <span className="text-[9px] block text-slate-450 mt-0.5 font-mono">
+                      {tx.paymentSource === 'Cash' ? 'Tunai' :
+                       tx.paymentSource === 'Debit' ? 'Debit' :
+                       tx.paymentSource === 'Tabungan' || tx.relatedSavingGoalId || tx.paymentSource.startsWith('goal-') ? 'Tabungan' :
+                       'Kartu Kredit'}
+                    </span>
                   </div>
                 </div>
               );
@@ -497,6 +524,175 @@ export default function DashboardTab({
         </div>
 
       </div>
+
+      {/* Popup Modal: Transfer ke Tabungan */}
+      <AnimatePresence>
+        {showTransferModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => {
+                setShowTransferModal(false);
+                setErrorMsg('');
+                setTransferAmount('');
+              }}
+              className="absolute inset-0 bg-slate-950/60 backdrop-blur-xs"
+            />
+
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 10 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 10 }}
+              className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl w-full max-w-md shadow-2xl relative z-10 p-5 sm:p-6 space-y-4"
+            >
+              <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
+                <div className="flex items-center gap-2.5">
+                  <div className="p-2 bg-indigo-50 dark:bg-indigo-950/50 text-indigo-600 dark:text-indigo-400 rounded-xl border border-indigo-100 dark:border-indigo-800/60">
+                    <PiggyBank className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="font-display font-extrabold text-slate-800 dark:text-slate-100 text-sm sm:text-base">
+                      Transfer ke Tabungan
+                    </h3>
+                    <p className="text-xs text-slate-500 dark:text-slate-400">
+                      Alokasikan saldo tunai (Cash) Anda ke sasaran tabungan.
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowTransferModal(false);
+                    setErrorMsg('');
+                    setTransferAmount('');
+                  }}
+                  className="p-1.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              {savingGoals.length === 0 ? (
+                <div className="text-center py-6 space-y-3">
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    Anda belum memiliki sasaran tabungan aktif. Silakan buat sasaran tabungan terlebih dahulu di menu Tabungan.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => setShowTransferModal(false)}
+                    className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs rounded-xl transition cursor-pointer shadow-xs"
+                  >
+                    Tutup
+                  </button>
+                </div>
+              ) : (
+                <form
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    setErrorMsg('');
+                    setTransferSuccessMsg('');
+
+                    const numAmt = parseThousand(transferAmount);
+                    if (!numAmt || numAmt <= 0) {
+                      setErrorMsg('Masukkan nominal transfer yang valid.');
+                      return;
+                    }
+
+                    if (numAmt > totalBalance) {
+                      setErrorMsg(`Saldo tunai tidak mencukupi (Sisa Saldo Tunai: ${formatIDR(totalBalance)}).`);
+                      return;
+                    }
+
+                    const targetGoalId = selectedGoalId || savingGoals[0]?.id;
+                    if (onAdjustSavings && targetGoalId) {
+                      onAdjustSavings(targetGoalId, numAmt, 'deposit');
+                      setTransferSuccessMsg(`Berhasil menransfer ${formatIDR(numAmt)} ke tabungan!`);
+                      setTimeout(() => {
+                        setShowTransferModal(false);
+                        setTransferAmount('');
+                        setTransferSuccessMsg('');
+                      }, 1200);
+                    }
+                  }}
+                  className="space-y-4"
+                >
+                  {errorMsg && (
+                    <div className="p-2.5 bg-red-50 border border-red-100 text-red-600 dark:bg-red-950/40 dark:border-red-900/60 dark:text-red-300 text-xs rounded-xl font-medium">
+                      {errorMsg}
+                    </div>
+                  )}
+
+                  {transferSuccessMsg && (
+                    <div className="p-2.5 bg-emerald-50 border border-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:border-emerald-900/60 dark:text-emerald-300 text-xs rounded-xl font-bold flex items-center gap-2">
+                      <Sparkles className="w-4 h-4 text-emerald-500" />
+                      <span>{transferSuccessMsg}</span>
+                    </div>
+                  )}
+
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1">
+                      Pilih Sasaran Tabungan
+                    </label>
+                    <select
+                      value={selectedGoalId || savingGoals[0]?.id}
+                      onChange={(e) => setSelectedGoalId(e.target.value)}
+                      className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2.5 text-xs sm:text-sm text-slate-800 dark:text-slate-100 focus:border-indigo-500 focus:outline-hidden font-semibold"
+                    >
+                      {savingGoals.map((goal) => (
+                        <option key={goal.id} value={goal.id}>
+                          {goal.title} ({formatIDR(goal.currentAmount)} / {formatIDR(goal.targetAmount)})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1">
+                      Nominal Setoran (Rp)
+                    </label>
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      required
+                      value={transferAmount}
+                      onChange={(e) => setTransferAmount(formatThousand(e.target.value))}
+                      placeholder="Contoh: 500.000"
+                      className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm text-slate-800 dark:text-slate-100 placeholder:text-slate-400 focus:border-indigo-500 focus:outline-hidden font-mono"
+                      autoFocus
+                    />
+                    <div className="mt-2 text-[10px] font-medium text-indigo-600 dark:text-indigo-400 flex items-center justify-between">
+                      <span>Sisa Saldo Tunai: <strong className="font-mono">{formatIDR(totalBalance)}</strong></span>
+                    </div>
+                  </div>
+
+                  <div className="flex justify-end gap-2 pt-3 border-t border-slate-100 dark:border-slate-800">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowTransferModal(false);
+                        setErrorMsg('');
+                        setTransferAmount('');
+                      }}
+                      className="px-4 py-2 text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100 text-xs font-bold transition cursor-pointer"
+                    >
+                      Batal
+                    </button>
+                    <button
+                      type="submit"
+                      className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs rounded-xl shadow-xs transition cursor-pointer flex items-center gap-1.5"
+                    >
+                      <Send className="w-3.5 h-3.5" />
+                      <span>Konfirmasi Transfer</span>
+                    </button>
+                  </div>
+                </form>
+              )}
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
 
     </div>
   );
