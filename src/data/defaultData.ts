@@ -55,8 +55,10 @@ export const DEFAULT_SAVING_GOALS: SavingGoal[] = [
 ];
 
 export const DEFAULT_CREDIT_CARDS: CreditCard[] = [
-  { id: 'card-1', cardName: 'BCA Everyday Card', lastFourDigits: '4321', limitAmount: 15000000, usedAmount: 2450000, dueDate: 'Tiap Tanggal 15', color: 'from-blue-600 to-indigo-800' },
-  { id: 'card-2', cardName: 'Mandiri Signature', lastFourDigits: '8765', limitAmount: 30000000, usedAmount: 1200000, dueDate: 'Tiap Tanggal 20', color: 'from-slate-800 to-slate-950' }
+  { id: 'card-1', cardName: 'BCA Everyday Card', lastFourDigits: '4321', limitAmount: 15000000, usedAmount: 2450000, dueDate: 'Tiap Tanggal 15', color: 'from-blue-600 to-indigo-800', cardType: 'credit', bankName: 'BCA' },
+  { id: 'card-2', cardName: 'Mandiri Signature', lastFourDigits: '8765', limitAmount: 30000000, usedAmount: 1200000, dueDate: 'Tiap Tanggal 20', color: 'from-slate-800 to-slate-950', cardType: 'credit', bankName: 'Mandiri' },
+  { id: 'card-3', cardName: 'BCA Debit Tabungan', lastFourDigits: '1122', limitAmount: 0, usedAmount: 0, balance: 8500000, dueDate: '12/28', color: 'from-emerald-600 to-teal-800', cardType: 'debit', bankName: 'BCA' },
+  { id: 'card-4', cardName: 'Mandiri Debit Prioritas', lastFourDigits: '5566', limitAmount: 0, usedAmount: 0, balance: 4200000, dueDate: '10/29', color: 'from-cyan-600 to-blue-900', cardType: 'debit', bankName: 'Mandiri' }
 ];
 
 export const DEFAULT_TRANSACTIONS: Transaction[] = [

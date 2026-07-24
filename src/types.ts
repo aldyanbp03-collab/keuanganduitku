@@ -57,6 +57,9 @@ export interface CreditCard {
   usedAmount: number;
   dueDate: string; // e.g., "Tanggal 15" or "2026-08-15"
   color: string; // Tailwind color class for card bg
+  cardType?: 'credit' | 'debit';
+  balance?: number;
+  bankName?: string;
 }
 
 export interface Category {

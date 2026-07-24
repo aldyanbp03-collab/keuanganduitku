@@ -843,10 +843,55 @@ export default function App() {
       type: 'expense',
       category,
       date: date || new Date().toISOString().split('T')[0],
-      note: note || `Transaksi kartu kredit`,
+      note: note || `Transaksi kartu`,
       paymentSource: cardId,
       relatedCreditCardId: cardId
     });
+  };
+
+  const handleUpdateCard = (updatedCard: CreditCard) => {
+    setCreditCards(prev => prev.map(c => c.id === updatedCard.id ? updatedCard : c));
+    syncCreditCard(updatedCard);
+  };
+
+  const handleTransferDebitCard = (sourceId: string, targetId: string, amount: number, note?: string) => {
+    const sourceCard = creditCards.find(c => c.id === sourceId);
+    const targetCard = creditCards.find(c => c.id === targetId);
+    if (!sourceCard || !targetCard) return;
+
+    const sourceBalance = sourceCard.balance || 0;
+    const targetBalance = targetCard.balance || 0;
+
+    const updatedSource: CreditCard = { ...sourceCard, balance: Math.max(0, sourceBalance - amount) };
+    const updatedTarget: CreditCard = { ...targetCard, balance: targetBalance + amount };
+
+    setCreditCards(prev => prev.map(c => {
+      if (c.id === sourceId) return updatedSource;
+      if (c.id === targetId) return updatedTarget;
+      return c;
+    }));
+
+    syncCreditCard(updatedSource);
+    syncCreditCard(updatedTarget);
+
+    // Record transfer transaction
+    const txTitle = `Transfer Debit: ${sourceCard.cardName} ➔ ${targetCard.cardName}`;
+    handleAddTransaction({
+      title: txTitle,
+      amount: amount,
+      type: 'expense',
+      category: 'Lain-lain',
+      date: new Date().toISOString().split('T')[0],
+      note: note || `Transfer saldo antar kartu debit (${sourceCard.cardName} ke ${targetCard.cardName})`,
+      paymentSource: sourceId,
+      relatedCreditCardId: sourceId
+    });
+
+    triggerNotification(
+      'Transfer Debit Berhasil 💸',
+      `Transfer saldo Rp ${amount.toLocaleString('id-ID')} dari ${sourceCard.cardName} ke ${targetCard.cardName} berhasil dilakukan.`,
+      'success'
+    );
   };
 
   // --- SAVE EXPENSE FORM ---
@@ -1197,6 +1242,8 @@ export default function App() {
               setCreditCards(prev => prev.filter(c => c.id !== id));
               syncDeleteCreditCard(id);
             }}
+            onUpdateCard={handleUpdateCard}
+            onTransferDebit={handleTransferDebitCard}
             onPayCardBill={handlePayCardBill}
             onSimulateCharge={handleSimulateCharge}
             debts={debts}

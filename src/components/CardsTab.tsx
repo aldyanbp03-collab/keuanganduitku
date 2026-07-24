@@ -18,6 +18,7 @@ import {
   Zap,
   ArrowDownRight,
   ArrowUpRight,
+  ArrowRightLeft,
   HandCoins,
   X,
   Calendar,
@@ -44,6 +45,8 @@ interface CardsTabProps {
   onSelectTransaction?: (tx: Transaction) => void;
   onAddCard: (card: Omit<CreditCard, 'id'>) => void;
   onDeleteCard: (id: string) => void;
+  onUpdateCard?: (card: CreditCard) => void;
+  onTransferDebit?: (sourceId: string, targetId: string, amount: number, note?: string) => void;
   onPayCardBill: (id: string, amount: number) => void;
   onSimulateCharge: (id: string, amount: number, title: string, category: string, date?: string, note?: string) => void;
   
@@ -63,6 +66,8 @@ export default function CardsTab({
   onSelectTransaction,
   onAddCard,
   onDeleteCard,
+  onUpdateCard,
+  onTransferDebit,
   onPayCardBill,
   onSimulateCharge,
   debts,
@@ -80,12 +85,31 @@ export default function CardsTab({
   const [txToDelete, setTxToDelete] = useState<Transaction | null>(null);
   const [expandedCardTxs, setExpandedCardTxs] = useState<{ [cardId: string]: boolean }>({});
 
+  // Filter for card view: all, credit, debit
+  const [filterCardType, setFilterCardType] = useState<'all' | 'debit' | 'credit'>('all');
+
   // Form states for adding card
+  const [cardType, setCardType] = useState<'credit' | 'debit'>('credit');
   const [cardName, setCardName] = useState('');
+  const [bankName, setBankName] = useState('');
   const [lastFour, setLastFour] = useState('');
   const [limit, setLimit] = useState('');
+  const [cardBalance, setCardBalance] = useState('');
   const [dueDate, setDueDate] = useState('');
   const [colorTheme, setColorTheme] = useState('from-blue-600 to-indigo-800');
+
+  // Transfer Modal State
+  const [showTransferModal, setShowTransferModal] = useState(false);
+  const [transferSourceId, setTransferSourceId] = useState('');
+  const [transferTargetId, setTransferTargetId] = useState('');
+  const [transferAmount, setTransferAmount] = useState('');
+  const [transferNote, setTransferNote] = useState('');
+  const [transferError, setTransferError] = useState('');
+
+  // Top Up Modal State (for Debit Cards)
+  const [showTopUpModal, setShowTopUpModal] = useState<CreditCard | null>(null);
+  const [topUpAmount, setTopUpAmount] = useState('');
+  const [topUpNote, setTopUpNote] = useState('');
 
   // Form states for paying/charging
   const [amountInput, setAmountInput] = useState('');
@@ -157,36 +181,139 @@ export default function CardsTab({
 
   const handleCreateCard = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!cardName || !lastFour || !limit || !dueDate) {
-      setErrorMsg('Semua kolom kartu kredit wajib diisi.');
-      return;
-    }
-    if (lastFour.length !== 4 || isNaN(parseInt(lastFour))) {
-      setErrorMsg('4 digit terakhir harus berupa angka.');
-      return;
-    }
-    const limitVal = parseThousand(limit);
-    if (isNaN(limitVal) || limitVal <= 0) {
-      setErrorMsg('Limit kartu harus angka positif.');
-      return;
-    }
+    if (cardType === 'debit') {
+      if (!cardName || !lastFour || !cardBalance) {
+        setErrorMsg('Nama kartu/rekening, 4 digit terakhir, dan saldo awal wajib diisi.');
+        return;
+      }
+      if (lastFour.length !== 4 || isNaN(parseInt(lastFour))) {
+        setErrorMsg('4 digit terakhir harus berupa angka.');
+        return;
+      }
+      const balanceVal = parseThousand(cardBalance);
+      if (isNaN(balanceVal) || balanceVal < 0) {
+        setErrorMsg('Saldo awal harus berupa angka non-negatif.');
+        return;
+      }
 
-    onAddCard({
-      cardName,
-      lastFourDigits: lastFour,
-      limitAmount: limitVal,
-      usedAmount: 0,
-      dueDate,
-      color: colorTheme
-    });
+      onAddCard({
+        cardName,
+        lastFourDigits: lastFour,
+        limitAmount: 0,
+        usedAmount: 0,
+        balance: balanceVal,
+        dueDate: dueDate || '12/28',
+        color: colorTheme,
+        cardType: 'debit',
+        bankName: bankName || 'Bank'
+      });
+    } else {
+      if (!cardName || !lastFour || !limit || !dueDate) {
+        setErrorMsg('Semua kolom kartu kredit wajib diisi.');
+        return;
+      }
+      if (lastFour.length !== 4 || isNaN(parseInt(lastFour))) {
+        setErrorMsg('4 digit terakhir harus berupa angka.');
+        return;
+      }
+      const limitVal = parseThousand(limit);
+      if (isNaN(limitVal) || limitVal <= 0) {
+        setErrorMsg('Limit kartu harus angka positif.');
+        return;
+      }
+
+      onAddCard({
+        cardName,
+        lastFourDigits: lastFour,
+        limitAmount: limitVal,
+        usedAmount: 0,
+        dueDate,
+        color: colorTheme,
+        cardType: 'credit',
+        bankName: bankName || 'Bank'
+      });
+    }
 
     // Reset Form
     setCardName('');
+    setBankName('');
     setLastFour('');
     setLimit('');
+    setCardBalance('');
     setDueDate('');
     setErrorMsg('');
     setShowAddForm(false);
+  };
+
+  const handleTransferSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    setTransferError('');
+
+    if (!transferSourceId || !transferTargetId) {
+      setTransferError('Pilih kartu debit asal dan kartu debit tujuan.');
+      return;
+    }
+    if (transferSourceId === transferTargetId) {
+      setTransferError('Kartu debit asal dan tujuan tidak boleh sama.');
+      return;
+    }
+
+    const amt = parseThousand(transferAmount);
+    if (isNaN(amt) || amt <= 0) {
+      setTransferError('Nominal transfer harus berupa angka positif.');
+      return;
+    }
+
+    const sourceCard = creditCards.find(c => c.id === transferSourceId);
+    if (!sourceCard) {
+      setTransferError('Kartu debit asal tidak ditemukan.');
+      return;
+    }
+
+    const currentBalance = sourceCard.balance || 0;
+    if (amt > currentBalance) {
+      setTransferError(`Saldo kartu debit asal tidak mencukupi (${formatIDR(currentBalance)}).`);
+      return;
+    }
+
+    if (onTransferDebit) {
+      onTransferDebit(transferSourceId, transferTargetId, amt, transferNote);
+    } else if (onUpdateCard) {
+      const targetCard = creditCards.find(c => c.id === transferTargetId);
+      if (targetCard) {
+        onUpdateCard({ ...sourceCard, balance: Math.max(0, currentBalance - amt) });
+        onUpdateCard({ ...targetCard, balance: (targetCard.balance || 0) + amt });
+      }
+    }
+
+    // Reset Form
+    setTransferSourceId('');
+    setTransferTargetId('');
+    setTransferAmount('');
+    setTransferNote('');
+    setTransferError('');
+    setShowTransferModal(false);
+  };
+
+  const handleTopUpSubmit = (e: React.FormEvent, card: CreditCard) => {
+    e.preventDefault();
+    const amt = parseThousand(topUpAmount);
+    if (isNaN(amt) || amt <= 0) {
+      setErrorMsg('Nominal top up harus berupa angka positif.');
+      return;
+    }
+
+    if (onUpdateCard) {
+      onUpdateCard({
+        ...card,
+        balance: (card.balance || 0) + amt
+      });
+    }
+
+    setTopUpAmount('');
+    setTopUpNote('');
+    setErrorMsg('');
+    setShowTopUpModal(null);
   };
 
   const handlePaySubmit = (e: React.FormEvent, card: CreditCard) => {
@@ -218,10 +345,23 @@ export default function CardsTab({
       setErrorMsg('Nominal transaksi harus berupa angka positif.');
       return;
     }
-    const remainingLimit = card.limitAmount - card.usedAmount;
-    if (amountVal > remainingLimit) {
-      setErrorMsg(`Transaksi melebihi sisa limit kartu kredit Anda (${formatIDR(remainingLimit)}).`);
-      return;
+
+    if (card.cardType === 'debit') {
+      const currentBalance = card.balance || 0;
+      if (amountVal > currentBalance) {
+        setErrorMsg(`Saldo kartu debit tidak mencukupi (${formatIDR(currentBalance)}).`);
+        return;
+      }
+
+      if (onUpdateCard) {
+        onUpdateCard({ ...card, balance: Math.max(0, currentBalance - amountVal) });
+      }
+    } else {
+      const remainingLimit = card.limitAmount - card.usedAmount;
+      if (amountVal > remainingLimit) {
+        setErrorMsg(`Transaksi melebihi sisa limit kartu kredit Anda (${formatIDR(remainingLimit)}).`);
+        return;
+      }
     }
 
     onSimulateCharge(
@@ -230,7 +370,7 @@ export default function CardsTab({
       chargeTitle, 
       chargeCategory, 
       chargeDate || new Date().toISOString().split('T')[0],
-      chargeNote || `Transaksi kartu kredit ${card.cardName}`
+      chargeNote || `Transaksi ${card.cardType === 'debit' ? 'kartu debit' : 'kartu kredit'} ${card.cardName}`
     );
     setAmountInput('');
     setChargeTitle('');
@@ -299,22 +439,36 @@ export default function CardsTab({
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div>
               <h2 className="text-xl sm:text-2xl font-display font-extrabold text-slate-950 flex items-center gap-2">
-                <CardIcon className="w-7 h-7 text-emerald-600" /> Kelola Kartu Kredit
+                <CardIcon className="w-7 h-7 text-emerald-600" /> Kelola Kartu Kredit & Debit
               </h2>
               <p className="text-xs sm:text-sm text-slate-500">
-                Monitoring sisa limit, jatuh tempo, dan bayar tagihan kartu kredit Anda secara disiplin.
+                Monitoring saldo kartu debit, sisa limit kredit, jatuh tempo, serta transfer antar kartu debit.
               </p>
             </div>
             
-            <button
-              onClick={() => {
-                setShowAddForm(!showAddForm);
-                setErrorMsg('');
-              }}
-              className="px-4 py-2 bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-bold text-xs rounded-xl transition flex items-center gap-1.5 self-start sm:self-auto cursor-pointer"
-            >
-              <PlusCircle className="w-4 h-4" /> Hubungkan Kartu Baru
-            </button>
+            <div className="flex items-center gap-2.5 flex-wrap self-start sm:self-auto">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowTransferModal(true);
+                  setTransferError('');
+                }}
+                className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl transition flex items-center gap-1.5 cursor-pointer shadow-xs"
+              >
+                <ArrowRightLeft className="w-4 h-4 text-emerald-200" /> Transfer Antar Debit
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setShowAddForm(!showAddForm);
+                  setErrorMsg('');
+                }}
+                className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs rounded-xl transition flex items-center gap-1.5 cursor-pointer shadow-xs"
+              >
+                <PlusCircle className="w-4 h-4 text-emerald-400" /> Tambah Kartu Baru
+              </button>
+            </div>
           </div>
 
       {/* Card Addition Form */}
@@ -327,7 +481,33 @@ export default function CardsTab({
             className="overflow-hidden"
           >
             <form onSubmit={handleCreateCard} className="bg-white border border-slate-200/80 rounded-2xl p-5 shadow-xs space-y-4">
-              <h3 className="font-display font-bold text-slate-800 text-sm">Hubungkan Rekening Kartu Kredit Baru</h3>
+              <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                <h3 className="font-display font-bold text-slate-800 text-sm">Hubungkan Kartu Baru</h3>
+                
+                {/* Card Type Switcher */}
+                <div className="flex bg-slate-100 p-1 rounded-xl border border-slate-200 text-xs font-bold gap-1">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setCardType('credit');
+                      setColorTheme('from-blue-600 to-indigo-800');
+                    }}
+                    className={`px-3 py-1.5 rounded-lg transition ${cardType === 'credit' ? 'bg-white text-slate-900 shadow-2xs font-extrabold' : 'text-slate-500 hover:text-slate-800'}`}
+                  >
+                    💳 Kartu Kredit
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setCardType('debit');
+                      setColorTheme('from-emerald-600 to-teal-800');
+                    }}
+                    className={`px-3 py-1.5 rounded-lg transition ${cardType === 'debit' ? 'bg-emerald-500 text-slate-950 shadow-2xs font-extrabold' : 'text-slate-500 hover:text-slate-800'}`}
+                  >
+                    🏦 Kartu Debit
+                  </button>
+                </div>
+              </div>
               
               {errorMsg && (
                 <div className="p-3 bg-red-50 border border-red-200 text-red-600 text-xs rounded-xl flex items-center gap-2">
@@ -338,15 +518,29 @@ export default function CardsTab({
 
               <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
                 <div>
-                  <label className="block text-xs font-semibold text-slate-500 mb-1">Nama Kartu Kredit (Penerbit)</label>
+                  <label className="block text-xs font-semibold text-slate-500 mb-1">
+                    {cardType === 'debit' ? 'Nama Kartu / Rekening' : 'Nama Kartu Kredit'}
+                  </label>
                   <input
                     type="text"
                     value={cardName}
                     onChange={(e) => setCardName(e.target.value)}
-                    placeholder="Contoh: BCA Everyday, Mandiri Sky"
+                    placeholder={cardType === 'debit' ? 'Contoh: BCA Debit Utama, Jago' : 'Contoh: BCA Everyday, Mandiri Sky'}
                     className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-800 text-xs sm:text-sm focus:border-emerald-500 focus:outline-hidden transition"
                   />
                 </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-500 mb-1">Bank / Penerbit</label>
+                  <input
+                    type="text"
+                    value={bankName}
+                    onChange={(e) => setBankName(e.target.value)}
+                    placeholder="Contoh: BCA, Mandiri, BRI, Jago"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-800 text-xs sm:text-sm focus:border-emerald-500 focus:outline-hidden transition"
+                  />
+                </div>
+
                 <div>
                   <label className="block text-xs font-semibold text-slate-500 mb-1">4 Digit Terakhir</label>
                   <input
@@ -358,52 +552,73 @@ export default function CardsTab({
                     className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-800 text-xs sm:text-sm focus:border-emerald-500 focus:outline-hidden transition"
                   />
                 </div>
+
+                {cardType === 'debit' ? (
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-500 mb-1">Saldo Awal Kartu (Rp)</label>
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      value={cardBalance}
+                      onChange={(e) => setCardBalance(formatThousand(e.target.value))}
+                      placeholder="Contoh: 5.000.000"
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-800 text-xs sm:text-sm focus:border-emerald-500 focus:outline-hidden transition font-mono"
+                    />
+                  </div>
+                ) : (
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-500 mb-1">Limit Belanja Kartu (Rp)</label>
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      value={limit}
+                      onChange={(e) => setLimit(formatThousand(e.target.value))}
+                      placeholder="Contoh: 20.000.000"
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-800 text-xs sm:text-sm focus:border-emerald-500 focus:outline-hidden transition font-mono"
+                    />
+                  </div>
+                )}
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-semibold text-slate-500 mb-1">Limit Belanja Kartu (Rp)</label>
-                  <input
-                    type="text"
-                    inputMode="numeric"
-                    value={limit}
-                    onChange={(e) => setLimit(formatThousand(e.target.value))}
-                    placeholder="Contoh: 20.000.000"
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-800 text-xs sm:text-sm focus:border-emerald-500 focus:outline-hidden transition font-mono"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-500 mb-1">Jatuh Tempo Pembayaran</label>
+                  <label className="block text-xs font-semibold text-slate-500 mb-1">
+                    {cardType === 'debit' ? 'Masa Berlaku / Catatan' : 'Jatuh Tempo Pembayaran'}
+                  </label>
                   <input
                     type="text"
                     value={dueDate}
                     onChange={(e) => setDueDate(e.target.value)}
-                    placeholder="Contoh: Tiap Tanggal 15"
+                    placeholder={cardType === 'debit' ? 'Contoh: 12/28' : 'Contoh: Tiap Tanggal 15'}
                     className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-800 text-xs sm:text-sm focus:border-emerald-500 focus:outline-hidden transition"
                   />
                 </div>
-              </div>
 
-              {/* Theme Selector */}
-              <div>
-                <label className="block text-xs font-semibold text-slate-500 mb-2">Pilih Tema Visual Kartu</label>
-                <div className="flex flex-wrap gap-2.5">
-                  {[
-                    { value: 'from-blue-600 to-indigo-800', label: 'BCA Blue' },
-                    { value: 'from-slate-800 to-slate-950', label: 'Mandiri Signature Black' },
-                    { value: 'from-red-600 to-amber-700', label: 'HSBC Red' },
-                    { value: 'from-teal-600 to-emerald-800', label: 'BSI Teal' },
-                    { value: 'from-violet-600 to-fuchsia-800', label: 'CIMB Purple' }
-                  ].map((theme) => (
-                    <button
-                      key={theme.value}
-                      type="button"
-                      onClick={() => setColorTheme(theme.value)}
-                      className={`px-3 py-2 text-xs font-semibold rounded-xl border transition ${colorTheme === theme.value ? 'bg-slate-900 border-slate-900 text-white shadow-xs' : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'}`}
-                    >
-                      <div className="flex items-center gap-1.5">
-                        <span className={`w-3.5 h-3.5 rounded-sm bg-gradient-to-br ${theme.value}`} />
-                        <span>{theme.label}</span>
-                      </div>
-                    </button>
-                  ))}
+                {/* Theme Selector */}
+                <div>
+                  <label className="block text-xs font-semibold text-slate-500 mb-2">Pilih Tema Visual Kartu</label>
+                  <div className="flex flex-wrap gap-2">
+                    {[
+                      { value: 'from-emerald-600 to-teal-800', label: 'Emerald' },
+                      { value: 'from-blue-600 to-indigo-800', label: 'BCA Blue' },
+                      { value: 'from-slate-800 to-slate-950', label: 'Mandiri Black' },
+                      { value: 'from-cyan-600 to-blue-900', label: 'Cyan Cyber' },
+                      { value: 'from-red-600 to-amber-700', label: 'HSBC Red' },
+                      { value: 'from-violet-600 to-fuchsia-800', label: 'CIMB Purple' }
+                    ].map((theme) => (
+                      <button
+                        key={theme.value}
+                        type="button"
+                        onClick={() => setColorTheme(theme.value)}
+                        className={`px-2.5 py-1.5 text-xs font-semibold rounded-xl border transition ${colorTheme === theme.value ? 'bg-slate-900 border-slate-900 text-white shadow-xs' : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'}`}
+                      >
+                        <div className="flex items-center gap-1.5">
+                          <span className={`w-3 h-3 rounded-sm bg-gradient-to-br ${theme.value}`} />
+                          <span>{theme.label}</span>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
                 </div>
               </div>
 
@@ -419,7 +634,7 @@ export default function CardsTab({
                   type="submit"
                   className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold rounded-xl transition"
                 >
-                  Hubungkan Rekening Kartu
+                  Simpan Kartu Baru
                 </button>
               </div>
             </form>
@@ -427,255 +642,325 @@ export default function CardsTab({
         )}
       </AnimatePresence>
 
-      {/* Dynamic Credit Cards Analytics Vertical Column Chart */}
+      {/* Cards Filtering & Overview Cards */}
       {creditCards.length > 0 && (() => {
-        const totalLimitAll = creditCards.reduce((acc, c) => acc + c.limitAmount, 0);
-        const totalUsedAll = creditCards.reduce((acc, c) => acc + c.usedAmount, 0);
-        const maxVal = Math.max(...creditCards.map(c => Math.max(c.limitAmount, c.usedAmount)), 1000000);
+        const debitCardsList = creditCards.filter(c => c.cardType === 'debit');
+        const creditCardsList = creditCards.filter(c => c.cardType !== 'debit');
 
-        const formatCompactIDR = (num: number) => {
-          if (num >= 1_000_000_000) return `Rp ${(num / 1_000_000_000).toFixed(1)}M`;
-          if (num >= 1_000_000) return `Rp ${(num / 1_000_000).toFixed(1)}Jt`;
-          if (num >= 1_000) return `Rp ${(num / 1_000).toFixed(0)}rb`;
-          return `Rp ${num}`;
-        };
+        const totalDebitBalance = debitCardsList.reduce((acc, c) => acc + (c.balance || 0), 0);
+        const totalCreditLimit = creditCardsList.reduce((acc, c) => acc + c.limitAmount, 0);
+        const totalCreditUsed = creditCardsList.reduce((acc, c) => acc + c.usedAmount, 0);
 
         return (
-          <div className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-2xl p-4 sm:p-5 shadow-xs">
-            {/* Header Title & Legend */}
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4 pb-3 border-b border-slate-100 dark:border-slate-800">
-              <div>
-                <h3 className="font-display font-bold text-slate-800 dark:text-slate-100 text-sm sm:text-base">
-                  Grafik Penggunaan Kartu Kredit
-                </h3>
-                <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                  Perbandingan limit utama dan dana terpakai per kartu ({creditCards.length} Kartu).
-                </p>
-              </div>
-
-              <div className="flex items-center gap-3.5 text-xs font-semibold shrink-0">
-                <div className="flex items-center gap-1 text-emerald-600 dark:text-emerald-400">
-                  <span className="w-2.5 h-2.5 bg-emerald-500 rounded-full inline-block" />
-                  <span>Limit</span>
+          <div className="space-y-4">
+            {/* Top Summary Indicators */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div className="bg-white border border-slate-200/80 rounded-2xl p-4 shadow-2xs flex items-center justify-between">
+                <div>
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">TOTAL SALDO DEBIT</span>
+                  <span className="text-base sm:text-lg font-extrabold text-emerald-600 font-mono mt-0.5 block">
+                    {formatIDR(totalDebitBalance)}
+                  </span>
+                  <span className="text-[10px] text-slate-400">{debitCardsList.length} Kartu Debit</span>
                 </div>
-                <div className="flex items-center gap-1 text-rose-500 dark:text-rose-400">
-                  <span className="w-2.5 h-2.5 bg-rose-500 rounded-full inline-block" />
-                  <span>Terpakai</span>
+                <div className="p-2.5 bg-emerald-50 text-emerald-600 rounded-xl border border-emerald-100">
+                  <Wallet className="w-5 h-5" />
                 </div>
               </div>
-            </div>
 
-            {/* Graphical Vertical Column Chart Area */}
-            <div className="flex gap-2 h-56 mt-2 relative">
-              {/* Y-Axis Labels Column */}
-              <div className="flex flex-col justify-between text-[9px] text-slate-400 font-mono text-right w-11 pb-6 select-none shrink-0">
-                <span>{formatCompactIDR(maxVal)}</span>
-                <span>{formatCompactIDR(maxVal * 0.66)}</span>
-                <span>{formatCompactIDR(maxVal * 0.33)}</span>
-                <span>0</span>
+              <div className="bg-white border border-slate-200/80 rounded-2xl p-4 shadow-2xs flex items-center justify-between">
+                <div>
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">TOTAL LIMIT KREDIT</span>
+                  <span className="text-base sm:text-lg font-extrabold text-blue-600 font-mono mt-0.5 block">
+                    {formatIDR(totalCreditLimit)}
+                  </span>
+                  <span className="text-[10px] text-slate-400">{creditCardsList.length} Kartu Kredit</span>
+                </div>
+                <div className="p-2.5 bg-blue-50 text-blue-600 rounded-xl border border-blue-100">
+                  <ArrowUpRight className="w-5 h-5" />
+                </div>
               </div>
 
-              {/* Chart Grid Container */}
-              <div className="relative flex-1 h-full pb-6">
-                {/* Background horizontal grid lines */}
-                <div className="absolute inset-x-0 top-0 bottom-6 flex flex-col justify-between pointer-events-none">
-                  <div className="border-b border-slate-100 dark:border-slate-800/80 w-full h-0" />
-                  <div className="border-b border-slate-100 dark:border-slate-800/80 w-full h-0" />
-                  <div className="border-b border-slate-100 dark:border-slate-800/80 w-full h-0" />
-                  <div className="border-b border-slate-200 dark:border-slate-700 w-full h-0" />
+              <div className="bg-white border border-slate-200/80 rounded-2xl p-4 shadow-2xs flex items-center justify-between">
+                <div>
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">TOTAL TERPAKAI KREDIT</span>
+                  <span className="text-base sm:text-lg font-extrabold text-rose-600 font-mono mt-0.5 block">
+                    {formatIDR(totalCreditUsed)}
+                  </span>
+                  <span className="text-[10px] text-slate-400">Tagihan Berjalan</span>
                 </div>
-
-                {/* Vertical Column Bars for Each Credit Card */}
-                <div className="relative z-10 h-full flex items-end justify-around px-2 sm:px-4">
-                  {creditCards.map((card) => {
-                    const limitHeight = maxVal > 0 ? (card.limitAmount / maxVal) * 85 : 0;
-                    const usedHeight = maxVal > 0 ? (card.usedAmount / maxVal) * 85 : 0;
-
-                    return (
-                      <div key={`chart-col-${card.id}`} className="flex flex-col items-center gap-1.5 group h-full justify-end min-w-[50px]">
-                        <div className="flex items-end gap-1.5 h-[85%] pb-0.5">
-                          {/* Limit Bar (Emerald) */}
-                          <div
-                            className="w-3.5 sm:w-4 bg-emerald-500/85 hover:bg-emerald-500 rounded-t-sm transition-all duration-300 relative group cursor-pointer shadow-2xs"
-                            style={{ height: `${Math.max(card.limitAmount > 0 ? 4 : 0, limitHeight)}%` }}
-                          >
-                            <span className="absolute -top-7 left-1/2 -translate-x-1/2 bg-slate-900 text-white text-[9px] font-mono px-2 py-0.5 rounded-sm opacity-0 group-hover:opacity-100 transition-opacity duration-200 whitespace-nowrap z-20 shadow-md">
-                              Limit: {formatIDR(card.limitAmount)}
-                            </span>
-                          </div>
-
-                          {/* Used Bar (Rose) */}
-                          <div
-                            className="w-3.5 sm:w-4 bg-rose-500/85 hover:bg-rose-500 rounded-t-sm transition-all duration-300 relative group cursor-pointer shadow-2xs"
-                            style={{ height: `${Math.max(card.usedAmount > 0 ? 4 : 0, usedHeight)}%` }}
-                          >
-                            <span className="absolute -top-7 left-1/2 -translate-x-1/2 bg-slate-900 text-white text-[9px] font-mono px-2 py-0.5 rounded-sm opacity-0 group-hover:opacity-100 transition-opacity duration-200 whitespace-nowrap z-20 shadow-md">
-                              Terpakai: {formatIDR(card.usedAmount)}
-                            </span>
-                          </div>
-                        </div>
-
-                        {/* X-Axis Card Label */}
-                        <div className="text-center">
-                          <span className="text-[10px] font-bold text-slate-700 dark:text-slate-200 block truncate max-w-[70px]">
-                            {card.cardName}
-                          </span>
-                          <span className="text-[8px] font-mono text-slate-400 block -mt-0.5">
-                            ••{card.lastFourDigits}
-                          </span>
-                        </div>
-                      </div>
-                    );
-                  })}
+                <div className="p-2.5 bg-rose-50 text-rose-600 rounded-xl border border-rose-100">
+                  <ArrowDownRight className="w-5 h-5" />
                 </div>
               </div>
             </div>
 
-            {/* Bottom Summary Indicators matching screenshot style */}
-            <div className="mt-3 pt-3 border-t border-slate-100 dark:border-slate-800 grid grid-cols-2 gap-3 text-center">
-              <div className="bg-slate-50/80 dark:bg-slate-800/60 rounded-xl p-2.5 border border-slate-100 dark:border-slate-800">
-                <span className="text-[9px] font-bold text-slate-400 dark:text-slate-400 uppercase tracking-wider block">
-                  TOTAL LIMIT KREDIT
-                </span>
-                <span className="text-xs sm:text-sm font-bold text-emerald-600 dark:text-emerald-400 font-mono flex items-center justify-center gap-1 mt-0.5">
-                  <ArrowUpRight className="w-3.5 h-3.5 shrink-0" /> {formatIDR(totalLimitAll)}
-                </span>
+            {/* Quick Filter Tabs & Action */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-2">
+              <div className="flex items-center gap-1.5 bg-slate-100 p-1 rounded-xl text-xs font-bold w-fit border border-slate-200">
+                <button
+                  type="button"
+                  onClick={() => setFilterCardType('all')}
+                  className={`px-3 py-1.5 rounded-lg transition cursor-pointer ${filterCardType === 'all' ? 'bg-white text-slate-900 shadow-2xs font-extrabold' : 'text-slate-500 hover:text-slate-800'}`}
+                >
+                  Semua Kartu ({creditCards.length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setFilterCardType('debit')}
+                  className={`px-3 py-1.5 rounded-lg transition cursor-pointer ${filterCardType === 'debit' ? 'bg-emerald-500 text-slate-950 shadow-2xs font-extrabold' : 'text-slate-500 hover:text-slate-800'}`}
+                >
+                  Kartu Debit ({debitCardsList.length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setFilterCardType('credit')}
+                  className={`px-3 py-1.5 rounded-lg transition cursor-pointer ${filterCardType === 'credit' ? 'bg-blue-600 text-white shadow-2xs font-extrabold' : 'text-slate-500 hover:text-slate-800'}`}
+                >
+                  Kartu Kredit ({creditCardsList.length})
+                </button>
               </div>
 
-              <div className="bg-slate-50/80 dark:bg-slate-800/60 rounded-xl p-2.5 border border-slate-100 dark:border-slate-800">
-                <span className="text-[9px] font-bold text-slate-400 dark:text-slate-400 uppercase tracking-wider block">
-                  TOTAL TERPAKAI
-                </span>
-                <span className="text-xs sm:text-sm font-bold text-rose-500 dark:text-rose-400 font-mono flex items-center justify-center gap-1 mt-0.5">
-                  <ArrowDownRight className="w-3.5 h-3.5 shrink-0" /> {formatIDR(totalUsedAll)}
-                </span>
-              </div>
+              {debitCardsList.length >= 2 && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowTransferModal(true);
+                    setTransferSourceId(debitCardsList[0]?.id || '');
+                    setTransferTargetId(debitCardsList[1]?.id || '');
+                    setTransferError('');
+                  }}
+                  className="text-xs font-extrabold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 px-3.5 py-1.5 rounded-xl transition flex items-center gap-1.5 self-start sm:self-auto cursor-pointer"
+                >
+                  <ArrowRightLeft className="w-3.5 h-3.5 text-emerald-600" /> Transfer Antar Debit
+                </button>
+              )}
             </div>
           </div>
         );
       })()}
 
-      {/* Interactive Credit Card Deck */}
-      <div className="grid grid-cols-1 md:grid-cols-1 lg:grid-cols-2 gap-6">
-        {creditCards.map((card) => {
-          const usedPercent = (card.usedAmount / card.limitAmount) * 100;
-          const remainingLimit = card.limitAmount - card.usedAmount;
-          
+      {/* Interactive Card Deck */}
+      {(() => {
+        const visibleCards = creditCards.filter(c => {
+          if (filterCardType === 'debit') return c.cardType === 'debit';
+          if (filterCardType === 'credit') return c.cardType !== 'debit';
+          return true;
+        });
+
+        if (visibleCards.length === 0) {
           return (
-            <div 
-              key={card.id}
-              className="bg-white border border-slate-200/80 rounded-2xl p-5 shadow-2xs hover:border-slate-300 hover:shadow-xs transition-all relative flex flex-col justify-between"
-            >
-              <div>
-                
-                {/* Physical card visualization - Beautiful UI */}
-                <div className={`w-full max-w-md md:max-w-lg lg:max-w-none mx-auto md:mx-0 bg-gradient-to-br ${card.color} text-white rounded-2xl p-5 shadow-lg relative overflow-hidden aspect-[1.586/1] flex flex-col justify-between border border-white/10`}>
-                  
-                  {/* Hologram card chip & Wi-Fi signal */}
-                  <div className="flex items-start justify-between">
-                    <div className="flex flex-col">
-                      <span className="text-[10px] font-bold text-white/70 uppercase tracking-wider">KARTU KREDIT</span>
-                      <span className="text-sm font-display font-extrabold tracking-wide mt-0.5">{card.cardName}</span>
+            <div className="bg-white border border-slate-200/80 rounded-2xl p-8 text-center text-slate-400">
+              <CardIcon className="w-10 h-10 mx-auto mb-2 text-slate-300" />
+              <p className="text-sm font-semibold text-slate-600">
+                {filterCardType === 'debit' ? 'Belum ada kartu debit terhubung.' : filterCardType === 'credit' ? 'Belum ada kartu kredit terhubung.' : 'Belum ada kartu terhubung.'}
+              </p>
+              <p className="text-xs text-slate-400 mt-1">Klik tombol "Tambah Kartu Baru" untuk menambahkan.</p>
+            </div>
+          );
+        }
+
+        return (
+          <div className="grid grid-cols-1 md:grid-cols-1 lg:grid-cols-2 gap-6">
+            {visibleCards.map((card) => {
+              const isDebit = card.cardType === 'debit';
+              const usedPercent = card.limitAmount > 0 ? (card.usedAmount / card.limitAmount) * 100 : 0;
+              const remainingLimit = card.limitAmount - card.usedAmount;
+              const debitCardsList = creditCards.filter(c => c.cardType === 'debit');
+
+              return (
+                <div 
+                  key={card.id}
+                  className="bg-white border border-slate-200/80 rounded-2xl p-5 shadow-2xs hover:border-slate-300 hover:shadow-xs transition-all relative flex flex-col justify-between"
+                >
+                  <div>
+                    {/* Physical card visualization */}
+                    <div className={`w-full max-w-md md:max-w-lg lg:max-w-none mx-auto md:mx-0 bg-gradient-to-br ${card.color || (isDebit ? 'from-emerald-600 to-teal-800' : 'from-blue-600 to-indigo-800')} text-white rounded-2xl p-5 shadow-lg relative overflow-hidden aspect-[1.586/1] flex flex-col justify-between border border-white/10`}>
+                      
+                      {/* Hologram card chip & Wi-Fi signal */}
+                      <div className="flex items-start justify-between">
+                        <div className="flex flex-col">
+                          <span className={`text-[10px] font-bold text-white/90 uppercase tracking-wider px-2 py-0.5 rounded-md w-fit ${isDebit ? 'bg-emerald-950/40 border border-emerald-400/30' : 'bg-blue-950/40 border border-blue-400/30'}`}>
+                            {isDebit ? '🏦 KARTU DEBIT' : '💳 KARTU KREDIT'}
+                          </span>
+                          <span className="text-sm sm:text-base font-display font-extrabold tracking-wide mt-1.5">{card.cardName}</span>
+                          {card.bankName && (
+                            <span className="text-[10px] text-white/70 font-semibold">{card.bankName}</span>
+                          )}
+                        </div>
+                        
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setCardToDelete(card);
+                            }}
+                            className="p-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-lg border border-rose-400/50 transition cursor-pointer flex items-center justify-center shrink-0 shadow-sm"
+                            title={`Hapus ${isDebit ? 'Kartu Debit' : 'Kartu Kredit'}`}
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+
+                          <div className="w-10 h-7 bg-amber-400/80 rounded-md border border-amber-300/60 shadow-inner relative overflow-hidden shrink-0">
+                            <div className="absolute inset-y-0 left-1/3 w-px bg-slate-900/10" />
+                            <div className="absolute inset-y-0 right-1/3 w-px bg-slate-900/10" />
+                            <div className="absolute inset-x-0 top-1/2 h-px bg-slate-900/10" />
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Card number representation */}
+                      <div className="my-2 flex items-center justify-between">
+                        <span className="font-mono text-base sm:text-lg tracking-[0.2em] font-medium text-white/90">
+                          ••••  ••••  ••••  {card.lastFourDigits}
+                        </span>
+                      </div>
+
+                      {/* Card Bottom Details */}
+                      {isDebit ? (
+                        <div className="flex items-end justify-between pt-2 border-t border-white/15">
+                          <div>
+                            <span className="text-[8px] font-bold text-white/70 uppercase block">SALDO UTAMA</span>
+                            <span className="font-mono text-sm sm:text-base font-extrabold text-white">{formatIDR(card.balance || 0)}</span>
+                          </div>
+                          <div className="text-right">
+                            <span className="text-[8px] font-bold text-white/70 uppercase block">BERLAKU S.D</span>
+                            <span className="text-[10px] font-semibold text-white bg-white/15 px-2 py-0.5 rounded-md inline-block">
+                              {card.dueDate || '12/28'}
+                            </span>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="flex items-end justify-between pt-2 border-t border-white/15">
+                          <div>
+                            <span className="text-[8px] font-bold text-white/60 uppercase block">LIMIT UTAMA</span>
+                            <span className="font-mono text-xs font-bold text-white/90">{formatIDR(card.limitAmount)}</span>
+                          </div>
+                          <div className="text-right">
+                            <span className="text-[8px] font-bold text-white/60 uppercase block">JATUH TEMPO</span>
+                            <span className="text-[10px] font-semibold text-white bg-white/10 px-2 py-0.5 rounded-md inline-block">
+                              {card.dueDate}
+                            </span>
+                          </div>
+                        </div>
+                      )}
+
                     </div>
-                    
-                    <div className="flex items-center gap-2">
-                      {/* Delete button (Trash icon) */}
+
+                    {/* Progress Bar / Balance Card Box */}
+                    {isDebit ? (
+                      <div className="mt-4 p-3 bg-emerald-50/70 border border-emerald-100 rounded-xl flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <Wallet className="w-4 h-4 text-emerald-600 shrink-0" />
+                          <span className="text-xs font-bold text-slate-700">Saldo Kartu Debit</span>
+                        </div>
+                        <span className="text-sm font-extrabold font-mono text-emerald-700">
+                          {formatIDR(card.balance || 0)}
+                        </span>
+                      </div>
+                    ) : (
+                      <div className="mt-5 space-y-2">
+                        <div className="flex justify-between items-center text-xs">
+                          <span className="font-medium text-slate-500">Penggunaan Limit</span>
+                          <span className={`font-bold font-mono ${usedPercent >= 80 ? 'text-red-500' : 'text-slate-800'}`}>
+                            {formatIDR(card.usedAmount)} / {formatIDR(card.limitAmount)}
+                          </span>
+                        </div>
+                        
+                        <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
+                          <div 
+                            className={`h-full rounded-full transition-all duration-500 ${usedPercent >= 80 ? 'bg-red-500' : usedPercent >= 50 ? 'bg-orange-500' : 'bg-emerald-500'}`} 
+                            style={{ width: `${Math.min(usedPercent, 100)}%` }}
+                          />
+                        </div>
+
+                        <div className="flex justify-between items-center text-[10px] text-slate-400">
+                          <span>{Math.round(usedPercent)}% Terpakai</span>
+                          <span>Sisa Limit: {formatIDR(remainingLimit)}</span>
+                        </div>
+                      </div>
+                    )}
+
+                  </div>
+
+                  {/* Action Buttons */}
+                  {isDebit ? (
+                    <div className="mt-5 pt-4 border-t border-slate-100 grid grid-cols-3 gap-2">
                       <button
                         type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setCardToDelete(card);
+                        onClick={() => {
+                          setTransferSourceId(card.id);
+                          const otherDebit = debitCardsList.find(d => d.id !== card.id);
+                          setTransferTargetId(otherDebit ? otherDebit.id : '');
+                          setTransferAmount('');
+                          setTransferNote('');
+                          setTransferError('');
+                          setShowTransferModal(true);
                         }}
-                        className="p-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-lg border border-rose-400/50 transition cursor-pointer flex items-center justify-center shrink-0 shadow-sm"
-                        title="Hapus Kartu Kredit"
+                        className="py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[11px] sm:text-xs rounded-lg transition flex items-center justify-center gap-1 cursor-pointer shadow-2xs"
                       >
-                        <Trash2 className="w-3.5 h-3.5" />
+                        <ArrowRightLeft className="w-3.5 h-3.5 text-emerald-200 shrink-0" /> Transfer
                       </button>
 
-                      {/* Metallic golden chip */}
-                      <div className="w-10 h-7 bg-amber-400/80 rounded-md border border-amber-300/60 shadow-inner relative overflow-hidden shrink-0">
-                        <div className="absolute inset-y-0 left-1/3 w-px bg-slate-900/10" />
-                        <div className="absolute inset-y-0 right-1/3 w-px bg-slate-900/10" />
-                        <div className="absolute inset-x-0 top-1/2 h-px bg-slate-900/10" />
-                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setErrorMsg('');
+                          setTopUpAmount('');
+                          setTopUpNote('');
+                          setShowTopUpModal(card);
+                        }}
+                        className="py-1.5 bg-slate-900 hover:bg-slate-800 text-white font-bold text-[11px] sm:text-xs rounded-lg transition flex items-center justify-center gap-1 cursor-pointer"
+                      >
+                        <Wallet className="w-3.5 h-3.5 text-emerald-400 shrink-0" /> Top Up
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setErrorMsg('');
+                          setAmountInput('');
+                          setChargeTitle('');
+                          setChargeCategory('Makanan & Minuman');
+                          setChargeDate(new Date().toISOString().split('T')[0]);
+                          setChargeNote('');
+                          setShowChargeModal(card.id);
+                        }}
+                        className="py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-[11px] sm:text-xs border border-slate-200 rounded-lg transition flex items-center justify-center gap-1 cursor-pointer"
+                      >
+                        <ArrowDownRight className="w-3.5 h-3.5 text-rose-500 shrink-0" /> Transaksi
+                      </button>
                     </div>
-                  </div>
-
-                  {/* Card number representation */}
-                  <div className="my-3 flex items-center justify-between">
-                    <span className="font-mono text-base sm:text-lg tracking-[0.2em] font-medium text-white/90">
-                      ••••  ••••  ••••  {card.lastFourDigits}
-                    </span>
-                  </div>
-
-                  {/* Limit bar and due date info inside card */}
-                  <div className="flex items-end justify-between pt-2 border-t border-white/15">
-                    <div>
-                      <span className="text-[8px] font-bold text-white/60 uppercase block">LIMIT UTAMA</span>
-                      <span className="font-mono text-xs font-bold text-white/90">{formatIDR(card.limitAmount)}</span>
+                  ) : (
+                    <div className="mt-6 pt-4 border-t border-slate-100 grid grid-cols-2 gap-2.5">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setErrorMsg('');
+                          setShowPayModal(card.id);
+                        }}
+                        className="py-1.5 bg-slate-950 hover:bg-slate-800 text-white font-bold text-xs rounded-lg transition flex items-center justify-center gap-1 cursor-pointer"
+                      >
+                        <Wallet className="w-3.5 h-3.5 text-emerald-400" /> Bayar Tagihan
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setErrorMsg('');
+                          setAmountInput('');
+                          setChargeTitle('');
+                          setChargeCategory('Makanan & Minuman');
+                          setChargeDate(new Date().toISOString().split('T')[0]);
+                          setChargeNote('');
+                          setShowChargeModal(card.id);
+                        }}
+                        className="py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs border border-slate-200 rounded-lg transition flex items-center justify-center gap-1 cursor-pointer"
+                      >
+                        <ArrowDownRight className="w-3.5 h-3.5 text-rose-500" /> Transaksi Baru
+                      </button>
                     </div>
-                    <div className="text-right">
-                      <span className="text-[8px] font-bold text-white/60 uppercase block">JATUH TEMPO</span>
-                      <span className="text-[10px] font-semibold text-white bg-white/10 px-2 py-0.5 rounded-md inline-block">
-                        {card.dueDate}
-                      </span>
-                    </div>
-                  </div>
-
-                </div>
-
-                {/* Utilization Progress Bar */}
-                <div className="mt-5 space-y-2">
-                  <div className="flex justify-between items-center text-xs">
-                    <span className="font-medium text-slate-500">Penggunaan Limit</span>
-                    <span className={`font-bold font-mono ${usedPercent >= 80 ? 'text-red-500' : 'text-slate-800'}`}>
-                      {formatIDR(card.usedAmount)} / {formatIDR(card.limitAmount)}
-                    </span>
-                  </div>
-                  
-                  <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
-                    <div 
-                      className={`h-full rounded-full transition-all duration-500 ${usedPercent >= 80 ? 'bg-red-500' : usedPercent >= 50 ? 'bg-orange-500' : 'bg-emerald-500'}`} 
-                      style={{ width: `${Math.min(usedPercent, 100)}%` }}
-                    />
-                  </div>
-
-                  <div className="flex justify-between items-center text-[10px] text-slate-400">
-                    <span>{Math.round(usedPercent)}% Terpakai</span>
-                    <span>Sisa Limit: {formatIDR(remainingLimit)}</span>
-                  </div>
-                </div>
-
-              </div>
-
-              {/* Pay Bill / Charge Card Buttons */}
-              <div className="mt-6 pt-4 border-t border-slate-100 grid grid-cols-2 gap-2.5">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setErrorMsg('');
-                    setShowPayModal(card.id);
-                  }}
-                  className="py-1.5 bg-slate-950 hover:bg-slate-800 text-white font-bold text-xs rounded-lg transition flex items-center justify-center gap-1 cursor-pointer"
-                >
-                  <Wallet className="w-3.5 h-3.5 text-emerald-400" /> Bayar Tagihan
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setErrorMsg('');
-                    setAmountInput('');
-                    setChargeTitle('');
-                    setChargeCategory('Makanan & Minuman');
-                    setChargeDate(new Date().toISOString().split('T')[0]);
-                    setChargeNote('');
-                    setShowChargeModal(card.id);
-                  }}
-                  className="py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs border border-slate-200 rounded-lg transition flex items-center justify-center gap-1 cursor-pointer"
-                >
-                  <ArrowDownRight className="w-3.5 h-3.5 text-rose-500" /> Transaksi Baru
-                </button>
-              </div>
+                  )}
 
               {/* Per-Card Transaction History List */}
               {(() => {
@@ -1036,6 +1321,8 @@ export default function CardsTab({
           );
         })}
       </div>
+        );
+      })()}
 
       {/* RIWAYAT & LOG TRANSAKSI KARTU KREDIT SECTION */}
       <div className="bg-[#131825] border border-[#232d3f] rounded-2xl p-4 sm:p-5 shadow-md space-y-4">
@@ -1290,6 +1577,247 @@ export default function CardsTab({
           </p>
         </div>
       </div>
+
+      {/* Debit Card Transfer Modal Overlay */}
+      <AnimatePresence>
+        {showTransferModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => {
+                setShowTransferModal(false);
+                setTransferError('');
+              }}
+              className="absolute inset-0 bg-slate-950/70 backdrop-blur-xs"
+            />
+
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 15 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 15 }}
+              className="bg-white border border-slate-200 rounded-2xl w-full max-w-[420px] shadow-2xl relative z-10 overflow-hidden"
+            >
+              <div className="p-4 bg-slate-900 text-white flex items-center justify-between border-b border-slate-800">
+                <div className="flex items-center gap-2.5">
+                  <div className="p-2 bg-emerald-500/10 text-emerald-400 rounded-xl border border-emerald-500/20">
+                    <ArrowRightLeft className="w-5 h-5 text-emerald-400" />
+                  </div>
+                  <div>
+                    <h4 className="font-display font-bold text-white text-sm">Transfer Antar Kartu Debit</h4>
+                    <p className="text-[11px] text-slate-400 mt-0.5">Kirim saldo dari satu kartu debit ke kartu debit lain</p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowTransferModal(false);
+                    setTransferError('');
+                  }}
+                  className="p-1 text-slate-400 hover:text-white rounded-lg transition cursor-pointer"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              <form onSubmit={handleTransferSubmit} className="p-4 space-y-4">
+                {transferError && (
+                  <div className="p-2.5 bg-rose-50 border border-rose-200 text-rose-700 text-xs font-semibold rounded-xl flex items-center gap-2">
+                    <AlertCircle className="w-4 h-4 shrink-0 text-rose-600" />
+                    <span>{transferError}</span>
+                  </div>
+                )}
+
+                {/* Source Debit Card */}
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-700 uppercase tracking-wider mb-1">
+                    Dari Kartu Debit (Asal)
+                  </label>
+                  <select
+                    value={transferSourceId}
+                    onChange={(e) => setTransferSourceId(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-xs text-slate-900 focus:border-emerald-500 focus:bg-white focus:outline-hidden font-medium cursor-pointer"
+                  >
+                    <option value="">-- Pilih Kartu Asal --</option>
+                    {creditCards.filter(c => c.cardType === 'debit').map((c) => (
+                      <option key={`src-${c.id}`} value={c.id}>
+                        {c.cardName} (•••• {c.lastFourDigits}) - Saldo: {formatIDR(c.balance || 0)}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Target Debit Card */}
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-700 uppercase tracking-wider mb-1">
+                    Ke Kartu Debit (Tujuan)
+                  </label>
+                  <select
+                    value={transferTargetId}
+                    onChange={(e) => setTransferTargetId(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-xs text-slate-900 focus:border-emerald-500 focus:bg-white focus:outline-hidden font-medium cursor-pointer"
+                  >
+                    <option value="">-- Pilih Kartu Tujuan --</option>
+                    {creditCards.filter(c => c.cardType === 'debit' && c.id !== transferSourceId).map((c) => (
+                      <option key={`tgt-${c.id}`} value={c.id}>
+                        {c.cardName} (•••• {c.lastFourDigits}) - Saldo: {formatIDR(c.balance || 0)}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Nominal Transfer */}
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-700 uppercase tracking-wider mb-1">
+                    Nominal Transfer (Rp)
+                  </label>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    value={transferAmount}
+                    onChange={(e) => setTransferAmount(formatThousand(e.target.value))}
+                    placeholder="Contoh: 500.000"
+                    className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2 text-xs text-slate-900 focus:border-emerald-500 focus:bg-white focus:outline-hidden font-mono font-bold"
+                  />
+                </div>
+
+                {/* Catatan Transfer */}
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-700 uppercase tracking-wider mb-1">
+                    Catatan (Opsional)
+                  </label>
+                  <input
+                    type="text"
+                    value={transferNote}
+                    onChange={(e) => setTransferNote(e.target.value)}
+                    placeholder="Contoh: Pindah dana tabungan harian"
+                    className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2 text-xs text-slate-900 focus:border-emerald-500 focus:bg-white focus:outline-hidden"
+                  />
+                </div>
+
+                <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowTransferModal(false);
+                      setTransferError('');
+                    }}
+                    className="px-4 py-2 text-slate-600 hover:text-slate-900 text-xs font-bold rounded-xl hover:bg-slate-100 transition cursor-pointer"
+                  >
+                    Batal
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold text-xs rounded-xl shadow-md transition cursor-pointer"
+                  >
+                    Proses Transfer
+                  </button>
+                </div>
+              </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Top Up Debit Card Modal Overlay */}
+      <AnimatePresence>
+        {showTopUpModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setShowTopUpModal(null)}
+              className="absolute inset-0 bg-slate-950/70 backdrop-blur-xs"
+            />
+
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 15 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 15 }}
+              className="bg-white border border-slate-200 rounded-2xl w-full max-w-[380px] shadow-2xl relative z-10 overflow-hidden"
+            >
+              <div className="p-4 bg-slate-900 text-white flex items-center justify-between border-b border-slate-800">
+                <div className="flex items-center gap-2.5">
+                  <div className="p-2 bg-emerald-500/10 text-emerald-400 rounded-xl border border-emerald-500/20">
+                    <Wallet className="w-5 h-5 text-emerald-400" />
+                  </div>
+                  <div>
+                    <h4 className="font-display font-bold text-white text-sm">Top Up Saldo Debit</h4>
+                    <p className="text-[11px] text-slate-400 mt-0.5">{showTopUpModal.cardName} (•••• {showTopUpModal.lastFourDigits})</p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowTopUpModal(null)}
+                  className="p-1 text-slate-400 hover:text-white rounded-lg transition cursor-pointer"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              <form onSubmit={(e) => handleTopUpSubmit(e, showTopUpModal)} className="p-4 space-y-4">
+                {errorMsg && (
+                  <div className="p-2.5 bg-rose-50 border border-rose-200 text-rose-700 text-xs font-semibold rounded-xl flex items-center gap-2">
+                    <AlertCircle className="w-4 h-4 shrink-0 text-rose-600" />
+                    <span>{errorMsg}</span>
+                  </div>
+                )}
+
+                <div>
+                  <div className="flex justify-between items-center mb-1">
+                    <label className="block text-[10px] font-bold text-slate-700 uppercase tracking-wider">
+                      Nominal Top Up (Rp)
+                    </label>
+                    <span className="text-[11px] font-mono font-bold text-emerald-600">
+                      Saldo Saat Ini: {formatIDR(showTopUpModal.balance || 0)}
+                    </span>
+                  </div>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    value={topUpAmount}
+                    onChange={(e) => setTopUpAmount(formatThousand(e.target.value))}
+                    placeholder="Contoh: 1.000.000"
+                    className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2 text-xs text-slate-900 focus:border-emerald-500 focus:bg-white focus:outline-hidden font-mono font-bold"
+                    autoFocus
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-700 uppercase tracking-wider mb-1">
+                    Catatan / Sumber Top Up (Opsional)
+                  </label>
+                  <input
+                    type="text"
+                    value={topUpNote}
+                    onChange={(e) => setTopUpNote(e.target.value)}
+                    placeholder="Contoh: Setor tunai ATM / Setor gaji"
+                    className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2 text-xs text-slate-900 focus:border-emerald-500 focus:bg-white focus:outline-hidden"
+                  />
+                </div>
+
+                <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
+                  <button
+                    type="button"
+                    onClick={() => setShowTopUpModal(null)}
+                    className="px-4 py-2 text-slate-600 hover:text-slate-900 text-xs font-bold rounded-xl hover:bg-slate-100 transition cursor-pointer"
+                  >
+                    Batal
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold text-xs rounded-xl shadow-md transition cursor-pointer"
+                  >
+                    Tambah Saldo
+                  </button>
+                </div>
+              </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
 
       {/* Custom Confirmation Dialog for Card Deletion */}
       <AnimatePresence>
