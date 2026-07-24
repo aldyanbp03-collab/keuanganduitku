@@ -85,12 +85,18 @@ export default function DashboardTab({
   const totalUsed = creditCards.reduce((acc, c) => acc + c.usedAmount, 0);
   const creditCardLimitRemaining = totalLimit - totalUsed;
 
-  // Calculate 4th metric: Total Pengeluaran Tabungan (Strictly expenses from Savings Goals / Tabungan)
-  // Does NOT include Cash or Credit Cards!
+  // Calculate 4th metric: Total Pengeluaran Tabungan (Only when money is actually spent or withdrawn from savings)
   const totalExpenseTabungan = transactions
     .filter(t => {
-      if (t.type !== 'expense') return false;
-      return Boolean(t.relatedSavingGoalId) || t.paymentSource === 'Tabungan' || t.paymentSource.startsWith('goal-') || savingGoals.some(g => g.id === t.paymentSource);
+      // Direct expenses paid using Tabungan / a Savings Goal
+      if (t.type === 'expense' && (t.paymentSource === 'Tabungan' || t.paymentSource?.startsWith('goal-') || savingGoals.some(g => g.id === t.paymentSource))) {
+        return true;
+      }
+      // Withdrawal transactions from savings (Tarik Tabungan)
+      if (t.title?.toLowerCase().includes('tarik tabungan') || t.note?.toLowerCase().includes('tarik saku')) {
+        return true;
+      }
+      return false;
     })
     .reduce((acc, curr) => acc + curr.amount, 0);
 
@@ -192,7 +198,7 @@ export default function DashboardTab({
       value: formatIDR(totalExpenseTabungan),
       icon: <Receipt className="w-4 h-4 text-rose-600" />,
       color: 'bg-rose-50 text-rose-700 border-rose-100',
-      desc: 'Khusus Alokasi & Transfer Tabungan'
+      desc: totalExpenseTabungan > 0 ? 'Penarikan & Belanja dari Tabungan' : 'Belum Ada Penarikan Tabungan'
     }
   ];
 

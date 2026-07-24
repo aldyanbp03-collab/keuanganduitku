@@ -696,7 +696,17 @@ export default function App() {
   };
 
   // --- SAVINGS ADJUSTMENT ---
-  const handleAdjustSavings = (goalId: string, amount: number, type: 'deposit' | 'withdraw') => {
+  const handleAdjustSavings = (
+    goalId: string, 
+    amount: number, 
+    type: 'deposit' | 'withdraw',
+    withdrawDestination?: {
+      target: 'cash' | 'credit_card' | 'expense';
+      creditCardId?: string;
+      expenseCategory?: string;
+      expenseTitle?: string;
+    }
+  ) => {
     let goalTitle = '';
     setSavingGoals(prev => prev.map(goal => {
       if (goal.id === goalId) {
@@ -726,17 +736,71 @@ export default function App() {
       return goal;
     }));
 
-    // Record dynamic cash transaction to match this event
-    handleAddTransaction({
-      title: type === 'deposit' ? `Setor Tabungan: ${goalTitle}` : `Tarik Tabungan: ${goalTitle}`,
-      amount: amount,
-      type: type === 'deposit' ? 'expense' : 'income',
-      category: 'Lain-lain',
-      date: new Date().toISOString().split('T')[0],
-      note: type === 'deposit' ? `Alokasi dana ke goal: ${goalTitle}` : `Tarik saku dari goal: ${goalTitle}`,
-      paymentSource: 'Cash',
-      relatedSavingGoalId: goalId
-    });
+    if (type === 'deposit') {
+      handleAddTransaction({
+        title: `Setor Tabungan: ${goalTitle}`,
+        amount: amount,
+        type: 'expense',
+        category: 'Lain-lain',
+        date: new Date().toISOString().split('T')[0],
+        note: `Alokasi dana ke goal: ${goalTitle}`,
+        paymentSource: 'Cash',
+        relatedSavingGoalId: goalId
+      });
+    } else {
+      const target = withdrawDestination?.target || 'cash';
+
+      if (target === 'credit_card' && withdrawDestination?.creditCardId) {
+        let cardTitle = 'Kartu Kredit';
+        setCreditCards(prev => prev.map(card => {
+          if (card.id === withdrawDestination.creditCardId) {
+            cardTitle = card.cardName;
+            const updatedCard = { ...card, usedAmount: Math.max(0, card.usedAmount - amount) };
+            syncCreditCard(updatedCard);
+            return updatedCard;
+          }
+          return card;
+        }));
+
+        handleAddTransaction({
+          title: `Pelunasan KK ${cardTitle} (dari ${goalTitle})`,
+          amount: amount,
+          type: 'expense',
+          category: 'Tagihan & Utilitas',
+          date: new Date().toISOString().split('T')[0],
+          note: `Pelunasan kartu kredit ${cardTitle} dari tabungan ${goalTitle}`,
+          paymentSource: 'Tabungan',
+          relatedSavingGoalId: goalId,
+          relatedCreditCardId: withdrawDestination.creditCardId
+        });
+      } else if (target === 'expense') {
+        const cat = withdrawDestination?.expenseCategory || 'Belanja';
+        const title = withdrawDestination?.expenseTitle || `Belanja Tabungan (${goalTitle})`;
+
+        handleAddTransaction({
+          title: title,
+          amount: amount,
+          type: 'expense',
+          category: cat,
+          date: new Date().toISOString().split('T')[0],
+          note: `Pengeluaran/Belanja langsung menggunakan dana tabungan ${goalTitle}`,
+          paymentSource: 'Tabungan',
+          relatedSavingGoalId: goalId
+        });
+      } else {
+        // Return to Cash
+        handleAddTransaction({
+          title: `Tarik Tabungan: ${goalTitle}`,
+          amount: amount,
+          type: 'income',
+          category: 'Lain-lain',
+          date: new Date().toISOString().split('T')[0],
+          note: `Tarik saku dari goal: ${goalTitle} kembali ke Saldo Tunai`,
+          paymentSource: 'Cash',
+          relatedSavingGoalId: goalId
+        });
+      }
+    }
   };
 
   // --- CREDIT CARD MANAGEMENT ---

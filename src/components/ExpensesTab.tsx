@@ -23,7 +23,11 @@ import {
   Info,
   X,
   PlusCircle,
-  Clock
+  Clock,
+  Search,
+  Filter,
+  ChevronsUpDown,
+  ChevronDown
 } from 'lucide-react';
 import { Transaction, Category, CreditCard, SavingGoal } from '../types';
 
@@ -76,11 +80,63 @@ export default function ExpensesTab({
   // Success indicator
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
+  // Filter States for Log Belanja
+  const [expenseSearch, setExpenseSearch] = useState('');
+  const [expenseCategoryFilter, setExpenseCategoryFilter] = useState('all');
+  const [expenseSourceFilter, setExpenseSourceFilter] = useState('all');
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
+  const [sortBy, setSortBy] = useState<'date-desc' | 'date-asc' | 'amount-desc' | 'amount-asc'>('date-desc');
+  const [showFilters, setShowFilters] = useState(false);
+
   // Calculations
   const expensesList = transactions.filter(t => t.type === 'expense');
   const totalExpense = expensesList.reduce((acc, t) => acc + t.amount, 0);
   const budgetPercentage = Math.min((totalExpense / budgetLimit) * 100, 100);
   const isOverBudget = totalExpense > budgetLimit;
+
+  // Filtered Expenses
+  const filteredExpenses = expensesList.filter(t => {
+    // 1. Search keyword
+    const matchesSearch = expenseSearch === '' || 
+      t.title.toLowerCase().includes(expenseSearch.toLowerCase()) ||
+      (t.note && t.note.toLowerCase().includes(expenseSearch.toLowerCase()));
+    if (!matchesSearch) return false;
+
+    // 2. Category
+    if (expenseCategoryFilter !== 'all' && t.category !== expenseCategoryFilter) return false;
+
+    // 3. Payment Source
+    if (expenseSourceFilter !== 'all') {
+      const src = t.paymentSource || 'Cash';
+      if (expenseSourceFilter === 'Cash' && src !== 'Cash') return false;
+      if (expenseSourceFilter === 'Debit' && src !== 'Debit') return false;
+      if (expenseSourceFilter === 'Tabungan' && src !== 'Tabungan' && !t.relatedSavingGoalId) return false;
+      if (expenseSourceFilter === 'Kartu Kredit' && (src === 'Cash' || src === 'Debit' || src === 'Tabungan')) return false;
+    }
+
+    // 4. Start & End Date
+    const matchesStartDate = startDate ? t.date >= startDate : true;
+    const matchesEndDate = endDate ? t.date <= endDate : true;
+    if (!matchesStartDate || !matchesEndDate) return false;
+
+    return true;
+  });
+
+  // Sort Expenses
+  const sortedExpenses = [...filteredExpenses].sort((a, b) => {
+    if (sortBy === 'date-desc') {
+      return new Date(b.date).getTime() - new Date(a.date).getTime();
+    } else if (sortBy === 'date-asc') {
+      return new Date(a.date).getTime() - new Date(b.date).getTime();
+    } else if (sortBy === 'amount-desc') {
+      return b.amount - a.amount;
+    } else {
+      return a.amount - b.amount;
+    }
+  });
+
+  const filteredTotal = filteredExpenses.reduce((sum, t) => sum + t.amount, 0);
 
   // Format IDR
   const formatIDR = (num: number) => {
@@ -301,30 +357,192 @@ export default function ExpensesTab({
 
       </div>
 
-      {/* RECENTLY RECORDED EXPENSES PREVIEW - Log Belanja Terakhir - Highly Polished & Clickable */}
-      <div className="bg-white border border-slate-200/80 rounded-2xl p-4 sm:p-5 shadow-xs">
-        <div className="flex items-center justify-between gap-3 pb-3 border-b border-slate-100 mb-3">
+      {/* RECENTLY RECORDED EXPENSES PREVIEW - Log Belanja Terakhir - With Filters */}
+      <div className="bg-white border border-slate-200/80 rounded-2xl p-4 sm:p-5 shadow-xs space-y-3.5">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
           <div className="min-w-0">
-            <h4 className="font-display font-bold text-slate-800 text-sm">Log Belanja Terakhir</h4>
+            <h4 className="font-display font-bold text-slate-800 text-sm">Log Belanja & Pengeluaran</h4>
             <p className="text-xs text-slate-500 font-normal mt-0.5 leading-snug">Histori pengeluaran yang tercatat di sistem</p>
           </div>
-          <span className="text-xs font-semibold text-slate-600 bg-slate-100 px-3 py-1 rounded-full shrink-0 whitespace-nowrap">
-            {expensesList.length} Transaksi
-          </span>
+          <div className="flex items-center gap-2 self-start sm:self-auto">
+            <span className="text-xs font-bold text-rose-700 bg-rose-50 px-2.5 py-1 rounded-full border border-rose-200">
+              Total: {formatIDR(filteredTotal)}
+            </span>
+            <span className="text-xs font-semibold text-slate-600 bg-slate-100 px-3 py-1 rounded-full shrink-0 whitespace-nowrap">
+              {filteredExpenses.length} Transaksi
+            </span>
+          </div>
         </div>
 
-        {expensesList.length === 0 ? (
-          <div className="text-center py-12 text-slate-400 text-xs flex flex-col items-center justify-center">
+        {/* Filter Controls Bar - Exact match to Riwayat Pembukuan */}
+        <div className="bg-[#0f141f] border border-[#1f283a] rounded-2xl p-3.5 sm:p-4 shadow-xl space-y-3">
+          
+          {/* Row 1: Full-width Search Bar */}
+          <div className="relative w-full">
+            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
+            <input
+              type="text"
+              value={expenseSearch}
+              onChange={(e) => setExpenseSearch(e.target.value)}
+              placeholder="Cari pengeluaran..."
+              className="w-full bg-[#182030] border border-[#26334a] rounded-xl pl-10 pr-9 py-2.5 sm:py-3 text-sm font-medium text-slate-100 placeholder:text-slate-500 focus:outline-none focus:border-rose-500/80 transition"
+            />
+            {expenseSearch && (
+              <button
+                type="button"
+                onClick={() => setExpenseSearch('')}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-200 cursor-pointer p-1"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            )}
+          </div>
+
+          {/* Row 2: Filter Button & Sort Dropdown side-by-side */}
+          <div className="grid grid-cols-2 gap-2.5">
+            <button
+              type="button"
+              onClick={() => setShowFilters(!showFilters)}
+              className={`flex items-center justify-center gap-2 rounded-xl py-2.5 sm:py-3 px-4 text-sm font-bold transition cursor-pointer ${
+                showFilters 
+                  ? 'bg-[#182542] border-2 border-[#3b82f6] text-white shadow-xs' 
+                  : 'bg-[#182030] hover:bg-[#202b40] border border-[#26334a] text-slate-200'
+              }`}
+            >
+              <Filter className="w-4 h-4 text-slate-300" />
+              <span>Filter</span>
+              <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform duration-200 ${showFilters ? 'rotate-180' : ''}`} />
+            </button>
+
+            <div className="relative w-full">
+              <select
+                value={sortBy}
+                onChange={(e: any) => setSortBy(e.target.value)}
+                className="w-full appearance-none bg-[#182030] hover:bg-[#202b40] border border-[#26334a] rounded-xl py-2.5 sm:py-3 pl-4 pr-10 text-sm font-bold text-slate-200 transition cursor-pointer focus:outline-none"
+              >
+                <option value="date-desc" className="bg-[#0f141f] text-slate-200">Terbaru</option>
+                <option value="date-asc" className="bg-[#0f141f] text-slate-200">Terlama</option>
+                <option value="amount-desc" className="bg-[#0f141f] text-slate-200">Nominal Terbesar</option>
+                <option value="amount-asc" className="bg-[#0f141f] text-slate-200">Nominal Terkecil</option>
+              </select>
+              <ChevronsUpDown className="w-4 h-4 text-slate-300 absolute right-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+            </div>
+          </div>
+
+          {/* Collapsible Filters Block */}
+          <AnimatePresence>
+            {showFilters && (
+              <motion.div
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: 'auto' }}
+                exit={{ opacity: 0, height: 0 }}
+                className="overflow-hidden pt-3 border-t border-[#1f283a]"
+              >
+                <div className="space-y-3.5 pb-1">
+                  
+                  {/* SUMBER PEMBAYARAN */}
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">
+                      SUMBER PEMBAYARAN
+                    </label>
+                    <div className="relative w-full">
+                      <select
+                        value={expenseSourceFilter}
+                        onChange={(e) => setExpenseSourceFilter(e.target.value)}
+                        className="w-full appearance-none bg-[#182030] hover:bg-[#202b40] border border-[#26334a] rounded-xl px-4 py-2.5 sm:py-3 text-slate-200 text-sm font-medium focus:outline-none transition cursor-pointer pr-10"
+                      >
+                        <option value="all" className="bg-[#0f141f]">Semua Sumber Bayar</option>
+                        <option value="Cash" className="bg-[#0f141f]">Tunai (Cash)</option>
+                        <option value="Debit" className="bg-[#0f141f]">Debit / ATM</option>
+                        <option value="Kartu Kredit" className="bg-[#0f141f]">Kartu Kredit</option>
+                        <option value="Tabungan" className="bg-[#0f141f]">Tabungan</option>
+                      </select>
+                      <ChevronsUpDown className="w-4 h-4 text-slate-300 absolute right-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                    </div>
+                  </div>
+
+                  {/* KATEGORI */}
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">
+                      KATEGORI
+                    </label>
+                    <div className="relative w-full">
+                      <select
+                        value={expenseCategoryFilter}
+                        onChange={(e) => setExpenseCategoryFilter(e.target.value)}
+                        className="w-full appearance-none bg-[#182030] hover:bg-[#202b40] border border-[#26334a] rounded-xl px-4 py-2.5 sm:py-3 text-slate-200 text-sm font-medium focus:outline-none transition cursor-pointer pr-10"
+                      >
+                        <option value="all" className="bg-[#0f141f]">Semua Kategori</option>
+                        {categories.filter(c => c.type === 'expense').map((c) => (
+                          <option key={c.id} value={c.name} className="bg-[#0f141f]">{c.name}</option>
+                        ))}
+                      </select>
+                      <ChevronsUpDown className="w-4 h-4 text-slate-300 absolute right-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                    </div>
+                  </div>
+
+                  {/* TANGGAL MULAI */}
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">
+                      TANGGAL MULAI
+                    </label>
+                    <input
+                      type="date"
+                      value={startDate}
+                      onChange={(e) => setStartDate(e.target.value)}
+                      className="w-full bg-[#182030] border border-[#26334a] rounded-xl px-4 py-2.5 sm:py-3 text-slate-200 text-sm font-medium focus:outline-none focus:border-rose-500 transition cursor-pointer color-scheme-dark"
+                    />
+                  </div>
+
+                  {/* TANGGAL SELESAI */}
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">
+                      TANGGAL SELESAI
+                    </label>
+                    <input
+                      type="date"
+                      value={endDate}
+                      onChange={(e) => setEndDate(e.target.value)}
+                      className="w-full bg-[#182030] border border-[#26334a] rounded-xl px-4 py-2.5 sm:py-3 text-slate-200 text-sm font-medium focus:outline-none focus:border-rose-500 transition cursor-pointer color-scheme-dark"
+                    />
+                  </div>
+
+                  {/* Reset Button */}
+                  <div className="pt-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setExpenseSearch('');
+                        setExpenseCategoryFilter('all');
+                        setExpenseSourceFilter('all');
+                        setStartDate('');
+                        setEndDate('');
+                        setSortBy('date-desc');
+                      }}
+                      className="w-full bg-[#182030] hover:bg-[#222e47] active:bg-[#283756] text-slate-200 font-semibold text-sm py-3 rounded-xl border border-[#26334a] transition text-center cursor-pointer shadow-xs"
+                    >
+                      Atur Ulang Semua Filter
+                    </button>
+                  </div>
+
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+
+        {sortedExpenses.length === 0 ? (
+          <div className="text-center py-10 text-slate-400 text-xs flex flex-col items-center justify-center">
             <Info className="w-8 h-8 text-slate-300 stroke-1 mb-2" />
-            <span>Belum ada transaksi pengeluaran tercatat dalam sistem.</span>
+            <span>Tidak ada transaksi pengeluaran yang sesuai dengan filter.</span>
           </div>
         ) : (
-          <div className="divide-y divide-slate-100/75 max-h-[350px] overflow-y-auto pr-1">
-            {expensesList.slice(0, 10).map((tx) => {
+          <div className="divide-y divide-slate-100/75 max-h-[380px] overflow-y-auto pr-1">
+            {sortedExpenses.map((tx) => {
               const sourceLabel = 
                 tx.paymentSource === 'Cash' ? 'Tunai' :
                 tx.paymentSource === 'Debit' ? 'Debit' :
-                tx.paymentSource === 'Tabungan' || tx.relatedSavingGoalId || tx.paymentSource.startsWith('goal-') ? 'Tabungan' :
+                tx.paymentSource === 'Tabungan' || tx.relatedSavingGoalId || (tx.paymentSource && tx.paymentSource.startsWith('goal-')) ? 'Tabungan' :
                 'Kartu Kredit';
 
               return (

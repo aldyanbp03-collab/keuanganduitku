@@ -28,7 +28,11 @@ import {
   Tag,
   ChevronDown,
   ChevronUp,
-  Eye
+  Eye,
+  Search,
+  Filter,
+  ChevronsUpDown,
+  Info
 } from 'lucide-react';
 import { CreditCard, DebtRecord, Transaction } from '../types';
 import DebtsTab from './DebtsTab';
@@ -90,6 +94,66 @@ export default function CardsTab({
   const [chargeDate, setChargeDate] = useState(new Date().toISOString().split('T')[0]);
   const [chargeNote, setChargeNote] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
+
+  // Search & Filter states for Credit Card Transactions
+  const [txSearch, setTxSearch] = useState('');
+  const [selectedCardFilter, setSelectedCardFilter] = useState('all');
+  const [selectedCategoryFilter, setSelectedCategoryFilter] = useState('all');
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
+  const [sortBy, setSortBy] = useState<'date-desc' | 'date-asc' | 'amount-desc' | 'amount-asc'>('date-desc');
+  const [showFilters, setShowFilters] = useState(false);
+
+  // Credit Card Transactions Filter Logic
+  const allCreditCardTxs = transactions.filter(t => 
+    Boolean(t.relatedCreditCardId) || 
+    creditCards.some(c => c.id === t.paymentSource || c.id === t.relatedCreditCardId) ||
+    t.paymentSource === 'Kartu Kredit'
+  );
+
+  const filteredCreditCardTxs = allCreditCardTxs.filter(t => {
+    // 1. Search Query
+    if (txSearch) {
+      const q = txSearch.toLowerCase();
+      const cardObj = creditCards.find(c => c.id === t.relatedCreditCardId || c.id === t.paymentSource);
+      const cardName = cardObj ? cardObj.cardName.toLowerCase() : '';
+      const matchesTitle = t.title.toLowerCase().includes(q);
+      const matchesCategory = t.category.toLowerCase().includes(q);
+      const matchesNote = t.note ? t.note.toLowerCase().includes(q) : false;
+      const matchesCard = cardName.includes(q);
+      if (!matchesTitle && !matchesCategory && !matchesNote && !matchesCard) return false;
+    }
+
+    // 2. Card Filter
+    if (selectedCardFilter !== 'all') {
+      const isMatch = t.relatedCreditCardId === selectedCardFilter || t.paymentSource === selectedCardFilter;
+      if (!isMatch) return false;
+    }
+
+    // 3. Category Filter
+    if (selectedCategoryFilter !== 'all') {
+      if (t.category !== selectedCategoryFilter) return false;
+    }
+
+    // 4. Start & End Date
+    const matchesStartDate = startDate ? t.date >= startDate : true;
+    const matchesEndDate = endDate ? t.date <= endDate : true;
+    if (!matchesStartDate || !matchesEndDate) return false;
+
+    return true;
+  });
+
+  const sortedCreditCardTxs = [...filteredCreditCardTxs].sort((a, b) => {
+    if (sortBy === 'date-desc') {
+      return new Date(b.date).getTime() - new Date(a.date).getTime();
+    } else if (sortBy === 'date-asc') {
+      return new Date(a.date).getTime() - new Date(b.date).getTime();
+    } else if (sortBy === 'amount-desc') {
+      return b.amount - a.amount;
+    } else {
+      return a.amount - b.amount;
+    }
+  });
 
   const handleCreateCard = (e: React.FormEvent) => {
     e.preventDefault();
@@ -971,6 +1035,249 @@ export default function CardsTab({
             </div>
           );
         })}
+      </div>
+
+      {/* RIWAYAT & LOG TRANSAKSI KARTU KREDIT SECTION */}
+      <div className="bg-[#131825] border border-[#232d3f] rounded-2xl p-4 sm:p-5 shadow-md space-y-4">
+        {/* Header Title & Summary */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-[#232d3f]">
+          <div>
+            <h3 className="font-display font-bold text-slate-100 text-base flex items-center gap-2">
+              <Receipt className="w-5 h-5 text-emerald-400" /> Log & Riwayat Transaksi Kartu Kredit
+            </h3>
+            <p className="text-xs text-slate-400 mt-0.5">
+              Cari dan filter riwayat penggunaan kartu kredit berdasarkan kata kunci, tanggal, kategori, dan jenis kartu.
+            </p>
+          </div>
+          {filteredCreditCardTxs.length > 0 && (
+            <div className="text-left sm:text-right self-start sm:self-auto">
+              <span className="text-[11px] text-slate-400 block">Total Pengeluaran Kartu</span>
+              <span className="text-sm sm:text-base font-bold font-mono text-rose-400">
+                -{formatIDR(filteredCreditCardTxs.reduce((sum, t) => sum + t.amount, 0))}
+              </span>
+            </div>
+          )}
+        </div>
+
+        {/* Filter Controls Bar - Exact match to Riwayat Pembukuan & Log Belanja */}
+        <div className="bg-[#0f141f] border border-[#1f283a] rounded-2xl p-3.5 sm:p-4 shadow-xl space-y-3">
+          
+          {/* Row 1: Full-width Search Bar */}
+          <div className="relative w-full">
+            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
+            <input
+              type="text"
+              value={txSearch}
+              onChange={(e) => setTxSearch(e.target.value)}
+              placeholder="Cari transaksi kartu kredit..."
+              className="w-full bg-[#182030] border border-[#26334a] rounded-xl pl-10 pr-9 py-2.5 sm:py-3 text-sm font-medium text-slate-100 placeholder:text-slate-500 focus:outline-none focus:border-emerald-500/80 transition"
+            />
+            {txSearch && (
+              <button
+                type="button"
+                onClick={() => setTxSearch('')}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-200 cursor-pointer p-1"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            )}
+          </div>
+
+          {/* Row 2: Filter Button & Sort Dropdown side-by-side */}
+          <div className="grid grid-cols-2 gap-2.5">
+            <button
+              type="button"
+              onClick={() => setShowFilters(!showFilters)}
+              className={`flex items-center justify-center gap-2 rounded-xl py-2.5 sm:py-3 px-4 text-sm font-bold transition cursor-pointer ${
+                showFilters 
+                  ? 'bg-[#182542] border-2 border-[#3b82f6] text-white shadow-xs' 
+                  : 'bg-[#182030] hover:bg-[#202b40] border border-[#26334a] text-slate-200'
+              }`}
+            >
+              <Filter className="w-4 h-4 text-slate-300" />
+              <span>Filter</span>
+              <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform duration-200 ${showFilters ? 'rotate-180' : ''}`} />
+            </button>
+
+            <div className="relative w-full">
+              <select
+                value={sortBy}
+                onChange={(e: any) => setSortBy(e.target.value)}
+                className="w-full appearance-none bg-[#182030] hover:bg-[#202b40] border border-[#26334a] rounded-xl py-2.5 sm:py-3 pl-4 pr-10 text-sm font-bold text-slate-200 transition cursor-pointer focus:outline-none"
+              >
+                <option value="date-desc" className="bg-[#0f141f] text-slate-200">Terbaru</option>
+                <option value="date-asc" className="bg-[#0f141f] text-slate-200">Terlama</option>
+                <option value="amount-desc" className="bg-[#0f141f] text-slate-200">Nominal Terbesar</option>
+                <option value="amount-asc" className="bg-[#0f141f] text-slate-200">Nominal Terkecil</option>
+              </select>
+              <ChevronsUpDown className="w-4 h-4 text-slate-300 absolute right-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+            </div>
+          </div>
+
+          {/* Collapsible Filters Block */}
+          <AnimatePresence>
+            {showFilters && (
+              <motion.div
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: 'auto' }}
+                exit={{ opacity: 0, height: 0 }}
+                className="overflow-hidden pt-3 border-t border-[#1f283a]"
+              >
+                <div className="space-y-3.5 pb-1">
+                  
+                  {/* PILIH KARTU KREDIT */}
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">
+                      KARTU KREDIT
+                    </label>
+                    <div className="relative w-full">
+                      <select
+                        value={selectedCardFilter}
+                        onChange={(e) => setSelectedCardFilter(e.target.value)}
+                        className="w-full appearance-none bg-[#182030] hover:bg-[#202b40] border border-[#26334a] rounded-xl px-4 py-2.5 sm:py-3 text-slate-200 text-sm font-medium focus:outline-none transition cursor-pointer pr-10"
+                      >
+                        <option value="all" className="bg-[#0f141f]">Semua Kartu Kredit</option>
+                        {creditCards.map((c) => (
+                          <option key={c.id} value={c.id} className="bg-[#0f141f]">{c.cardName} (•••• {c.lastFourDigits})</option>
+                        ))}
+                      </select>
+                      <ChevronsUpDown className="w-4 h-4 text-slate-300 absolute right-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                    </div>
+                  </div>
+
+                  {/* KATEGORI */}
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">
+                      KATEGORI
+                    </label>
+                    <div className="relative w-full">
+                      <select
+                        value={selectedCategoryFilter}
+                        onChange={(e) => setSelectedCategoryFilter(e.target.value)}
+                        className="w-full appearance-none bg-[#182030] hover:bg-[#202b40] border border-[#26334a] rounded-xl px-4 py-2.5 sm:py-3 text-slate-200 text-sm font-medium focus:outline-none transition cursor-pointer pr-10"
+                      >
+                        <option value="all" className="bg-[#0f141f]">Semua Kategori</option>
+                        {Array.from(new Set(allCreditCardTxs.map(t => t.category))).filter(Boolean).map((cat) => (
+                          <option key={cat} value={cat} className="bg-[#0f141f]">{cat}</option>
+                        ))}
+                      </select>
+                      <ChevronsUpDown className="w-4 h-4 text-slate-300 absolute right-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                    </div>
+                  </div>
+
+                  {/* TANGGAL MULAI */}
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">
+                      TANGGAL MULAI
+                    </label>
+                    <input
+                      type="date"
+                      value={startDate}
+                      onChange={(e) => setStartDate(e.target.value)}
+                      className="w-full bg-[#182030] border border-[#26334a] rounded-xl px-4 py-2.5 sm:py-3 text-slate-200 text-sm font-medium focus:outline-none focus:border-emerald-500 transition cursor-pointer color-scheme-dark"
+                    />
+                  </div>
+
+                  {/* TANGGAL SELESAI */}
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">
+                      TANGGAL SELESAI
+                    </label>
+                    <input
+                      type="date"
+                      value={endDate}
+                      onChange={(e) => setEndDate(e.target.value)}
+                      className="w-full bg-[#182030] border border-[#26334a] rounded-xl px-4 py-2.5 sm:py-3 text-slate-200 text-sm font-medium focus:outline-none focus:border-emerald-500 transition cursor-pointer color-scheme-dark"
+                    />
+                  </div>
+
+                  {/* Reset Button */}
+                  <div className="pt-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setTxSearch('');
+                        setSelectedCardFilter('all');
+                        setSelectedCategoryFilter('all');
+                        setStartDate('');
+                        setEndDate('');
+                        setSortBy('date-desc');
+                      }}
+                      className="w-full bg-[#182030] hover:bg-[#222e47] active:bg-[#283756] text-slate-200 font-semibold text-sm py-3 rounded-xl border border-[#26334a] transition text-center cursor-pointer shadow-xs"
+                    >
+                      Atur Ulang Semua Filter
+                    </button>
+                  </div>
+
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+
+        {/* Transaction List Output */}
+        {sortedCreditCardTxs.length === 0 ? (
+          <div className="text-center py-8 text-slate-400 text-xs flex flex-col items-center justify-center">
+            <Info className="w-8 h-8 text-slate-500 stroke-1 mb-2" />
+            <span>Tidak ada transaksi kartu kredit yang sesuai dengan filter.</span>
+          </div>
+        ) : (
+          <div className="divide-y divide-[#232d3f] max-h-[380px] overflow-y-auto pr-1">
+            {sortedCreditCardTxs.map((tx) => {
+              const cardObj = creditCards.find(c => c.id === tx.relatedCreditCardId || c.id === tx.paymentSource);
+              const cardLabel = cardObj ? `${cardObj.cardName} (•••• ${cardObj.lastFourDigits})` : 'Kartu Kredit';
+
+              return (
+                <div
+                  key={tx.id}
+                  onClick={() => onSelectTransaction && onSelectTransaction(tx)}
+                  className="py-3 px-2 hover:bg-[#182030]/60 rounded-xl flex items-center justify-between gap-3 transition cursor-pointer group"
+                >
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="p-2.5 bg-rose-500/10 text-rose-400 rounded-xl border border-rose-500/20 shrink-0">
+                      <Tag className="w-4 h-4" />
+                    </div>
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-sm font-bold text-slate-100 truncate group-hover:text-emerald-400 transition-colors">
+                          {tx.title}
+                        </span>
+                        <span className="text-[10px] font-semibold text-emerald-400 bg-emerald-950/60 border border-emerald-800/60 px-2 py-0.5 rounded-md shrink-0">
+                          {cardLabel}
+                        </span>
+                        <span className="text-[10px] font-semibold text-slate-400 bg-[#182030] border border-[#26334a] px-2 py-0.5 rounded-md shrink-0">
+                          {tx.category}
+                        </span>
+                      </div>
+                      <span className="text-xs text-slate-400 font-mono block mt-0.5">
+                        {tx.date} {tx.note ? `• ${tx.note}` : ''}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-3 shrink-0">
+                    <span className="text-sm font-bold font-mono text-rose-400">
+                      -{formatIDR(tx.amount)}
+                    </span>
+                    {onDeleteTransaction && (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setTxToDelete(tx);
+                        }}
+                        className="p-1.5 text-slate-400 hover:text-rose-400 hover:bg-rose-950/50 rounded-lg transition cursor-pointer"
+                        title="Hapus Transaksi"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       {/* Advisory Alert for Credit Card Utilization */}

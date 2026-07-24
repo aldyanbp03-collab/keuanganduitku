@@ -16,7 +16,9 @@ import {
   TrendingDown,
   Filter,
   CreditCard,
-  ChevronDown
+  ChevronDown,
+  ChevronsUpDown,
+  X
 } from 'lucide-react';
 import { Transaction, Category } from '../types';
 
@@ -127,130 +129,163 @@ export default function TransactionsTab({
             )}
           </AnimatePresence>
         </div>
-      </div>
-
-      {/* FILTER PANEL AND SEARCH */}
-      <div className="bg-white border border-slate-200/60 rounded-xl p-3 sm:p-4 shadow-2xs space-y-2.5">
+      </div>      {/* FILTER PANEL AND SEARCH - Exact match to user screenshot */}
+      <div className="bg-[#0f141f] border border-[#1f283a] rounded-2xl p-3.5 sm:p-4 shadow-xl space-y-3">
         
-        {/* Row 1: Search and Filter Toggle */}
-        <div className="flex flex-col sm:flex-row gap-2">
-          <div className="relative flex-1">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Cari transaksi..."
-              className="w-full pl-9 pr-3 py-1.5 sm:py-2 bg-slate-50/60 border border-slate-200 rounded-lg text-slate-800 text-xs focus:border-indigo-500 focus:outline-hidden transition placeholder:text-slate-400"
-            />
-          </div>
-
-          <div className="flex gap-2 w-full sm:w-auto">
+        {/* Row 1: Full-width Search Bar */}
+        <div className="relative w-full">
+          <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Cari transaksi..."
+            className="w-full bg-[#182030] border border-[#26334a] rounded-xl pl-10 pr-9 py-2.5 sm:py-3 text-sm font-medium text-slate-100 placeholder:text-slate-500 focus:outline-none focus:border-indigo-500/80 transition"
+          />
+          {searchQuery && (
             <button
-              onClick={() => setShowFilters(!showFilters)}
-              className={`flex-1 sm:flex-none justify-center px-3 py-1.5 sm:py-2 rounded-lg border text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
-                showFilters 
-                  ? 'bg-indigo-50 border-indigo-200 text-indigo-700' 
-                  : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
-              }`}
+              onClick={() => setSearchQuery('')}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-200 cursor-pointer p-1"
             >
-              <Filter className="w-3.5 h-3.5" />
-              <span>Filter</span>
-              <ChevronDown className={`w-3 h-3 transition-transform duration-200 ${showFilters ? 'rotate-180' : ''}`} />
+              <X className="w-4 h-4" />
             </button>
+          )}
+        </div>
 
+        {/* Row 2: Filter Button & Sort Dropdown side-by-side */}
+        <div className="grid grid-cols-2 gap-2.5">
+          <button
+            type="button"
+            onClick={() => setShowFilters(!showFilters)}
+            className={`flex items-center justify-center gap-2 rounded-xl py-2.5 sm:py-3 px-4 text-sm font-bold transition cursor-pointer ${
+              showFilters 
+                ? 'bg-[#182542] border-2 border-[#3b82f6] text-white shadow-xs' 
+                : 'bg-[#182030] hover:bg-[#202b40] border border-[#26334a] text-slate-200'
+            }`}
+          >
+            <Filter className="w-4 h-4 text-slate-300" />
+            <span>Filter</span>
+            <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform duration-200 ${showFilters ? 'rotate-180' : ''}`} />
+          </button>
+
+          <div className="relative w-full">
             <select
               value={sortBy}
               onChange={(e: any) => setSortBy(e.target.value)}
-              className="flex-1 sm:flex-none bg-white border border-slate-200 rounded-lg px-3 py-1.5 sm:py-2 text-slate-600 text-xs font-bold focus:outline-hidden cursor-pointer"
+              className="w-full appearance-none bg-[#182030] hover:bg-[#202b40] border border-[#26334a] rounded-xl py-2.5 sm:py-3 pl-4 pr-10 text-sm font-bold text-slate-200 transition cursor-pointer focus:outline-none"
             >
-              <option value="date-desc">Terbaru</option>
-              <option value="date-asc">Terlama</option>
-              <option value="amount-desc">Tertinggi</option>
-              <option value="amount-asc">Terendah</option>
+              <option value="date-desc" className="bg-[#0f141f] text-slate-200">Terbaru</option>
+              <option value="date-asc" className="bg-[#0f141f] text-slate-200">Terlama</option>
+              <option value="amount-desc" className="bg-[#0f141f] text-slate-200">Nominal Terbesar</option>
+              <option value="amount-asc" className="bg-[#0f141f] text-slate-200">Nominal Terkecil</option>
             </select>
+            <ChevronsUpDown className="w-4 h-4 text-slate-300 absolute right-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
           </div>
         </div>
 
-        {/* Collapsible Filters block */}
+        {/* Collapsible Filters Block (Stacked as in screenshot) */}
         <AnimatePresence>
           {showFilters && (
             <motion.div
               initial={{ opacity: 0, height: 0 }}
               animate={{ opacity: 1, height: 'auto' }}
               exit={{ opacity: 0, height: 0 }}
-              className="overflow-hidden pt-2.5 border-t border-slate-100"
+              className="overflow-hidden pt-3 border-t border-[#1f283a]"
             >
-              <div className="space-y-3 pb-1">
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
-                  
-                  {/* Filter Type */}
-                  <div>
-                    <span className="block text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1">Tipe Arus Kas</span>
-                    <div className="flex bg-slate-100/80 p-0.5 rounded-lg border border-slate-200/50">
-                      <button
-                        onClick={() => setFilterType('all')}
-                        className={`flex-1 py-1 text-[10px] font-bold rounded-md transition-all ${filterType === 'all' ? 'bg-white text-slate-900 shadow-2xs' : 'text-slate-500 hover:text-slate-900'}`}
-                      >
-                        Semua
-                      </button>
-                      <button
-                        onClick={() => setFilterType('income')}
-                        className={`flex-1 py-1 text-[10px] font-bold rounded-md transition-all ${filterType === 'income' ? 'bg-emerald-500 text-white' : 'text-slate-500 hover:text-slate-900'}`}
-                      >
-                        Masuk
-                      </button>
-                      <button
-                        onClick={() => setFilterType('expense')}
-                        className={`flex-1 py-1 text-[10px] font-bold rounded-md transition-all ${filterType === 'expense' ? 'bg-rose-500 text-white' : 'text-slate-500 hover:text-slate-900'}`}
-                      >
-                        Keluar
-                      </button>
-                    </div>
+              <div className="space-y-3.5 pb-1">
+                
+                {/* 1. Tipe Arus Kas */}
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">
+                    TIPE ARUS KAS
+                  </label>
+                  <div className="flex bg-[#182030] p-1 rounded-xl border border-[#26334a]">
+                    <button
+                      type="button"
+                      onClick={() => setFilterType('all')}
+                      className={`flex-1 py-2 text-xs sm:text-sm font-bold rounded-lg transition-all cursor-pointer ${
+                        filterType === 'all' 
+                          ? 'bg-[#2b3954] text-white shadow-xs' 
+                          : 'text-slate-400 hover:text-slate-200'
+                      }`}
+                    >
+                      Semua
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setFilterType('income')}
+                      className={`flex-1 py-2 text-xs sm:text-sm font-bold rounded-lg transition-all cursor-pointer ${
+                        filterType === 'income' 
+                          ? 'bg-emerald-600 text-white shadow-xs' 
+                          : 'text-slate-400 hover:text-slate-200'
+                      }`}
+                    >
+                      Masuk
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setFilterType('expense')}
+                      className={`flex-1 py-2 text-xs sm:text-sm font-bold rounded-lg transition-all cursor-pointer ${
+                        filterType === 'expense' 
+                          ? 'bg-rose-600 text-white shadow-xs' 
+                          : 'text-slate-400 hover:text-slate-200'
+                      }`}
+                    >
+                      Keluar
+                    </button>
                   </div>
+                </div>
 
-                  {/* Filter Category */}
-                  <div>
-                    <span className="block text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1">Kategori</span>
+                {/* 2. Kategori */}
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">
+                    KATEGORI
+                  </label>
+                  <div className="relative w-full">
                     <select
                       value={filterCategory}
                       onChange={(e) => setFilterCategory(e.target.value)}
-                      className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1 text-slate-600 text-xs focus:outline-hidden transition cursor-pointer"
+                      className="w-full appearance-none bg-[#182030] hover:bg-[#202b40] border border-[#26334a] rounded-xl px-4 py-2.5 sm:py-3 text-slate-200 text-sm font-medium focus:outline-none transition cursor-pointer pr-10"
                     >
-                      <option value="all">Semua Kategori</option>
+                      <option value="all" className="bg-[#0f141f]">Semua Kategori</option>
                       {categories.map((c) => (
-                        <option key={c.id} value={c.name}>{c.name}</option>
+                        <option key={c.id} value={c.name} className="bg-[#0f141f]">{c.name}</option>
                       ))}
                     </select>
+                    <ChevronsUpDown className="w-4 h-4 text-slate-300 absolute right-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
                   </div>
-
-                  {/* Tanggal Mulai */}
-                  <div>
-                    <span className="block text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1">Tanggal Mulai</span>
-                    <input
-                      type="date"
-                      value={startDate}
-                      onChange={(e) => setStartDate(e.target.value)}
-                      className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-slate-600 text-xs focus:outline-hidden focus:border-indigo-500 transition cursor-pointer"
-                    />
-                  </div>
-
-                  {/* Tanggal Selesai */}
-                  <div>
-                    <span className="block text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1">Tanggal Selesai</span>
-                    <input
-                      type="date"
-                      value={endDate}
-                      onChange={(e) => setEndDate(e.target.value)}
-                      className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-slate-600 text-xs focus:outline-hidden focus:border-indigo-500 transition cursor-pointer"
-                    />
-                  </div>
-
                 </div>
 
-                {/* Reset Filters button */}
-                <div className="pt-2 border-t border-slate-100 flex justify-end">
+                {/* 3. Tanggal Mulai */}
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">
+                    TANGGAL MULAI
+                  </label>
+                  <input
+                    type="date"
+                    value={startDate}
+                    onChange={(e) => setStartDate(e.target.value)}
+                    className="w-full bg-[#182030] border border-[#26334a] rounded-xl px-4 py-2.5 sm:py-3 text-slate-200 text-sm font-medium focus:outline-none focus:border-indigo-500 transition cursor-pointer color-scheme-dark"
+                  />
+                </div>
+
+                {/* 4. Tanggal Selesai */}
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">
+                    TANGGAL SELESAI
+                  </label>
+                  <input
+                    type="date"
+                    value={endDate}
+                    onChange={(e) => setEndDate(e.target.value)}
+                    className="w-full bg-[#182030] border border-[#26334a] rounded-xl px-4 py-2.5 sm:py-3 text-slate-200 text-sm font-medium focus:outline-none focus:border-indigo-500 transition cursor-pointer color-scheme-dark"
+                  />
+                </div>
+
+                {/* 5. Reset Button */}
+                <div className="pt-2">
                   <button
+                    type="button"
                     onClick={() => {
                       setSearchQuery('');
                       setFilterType('all');
@@ -259,16 +294,16 @@ export default function TransactionsTab({
                       setEndDate('');
                       setSortBy('date-desc');
                     }}
-                    className="w-full sm:w-auto px-4 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 text-[10px] font-bold py-1.5 rounded-lg border border-slate-200 transition text-center"
+                    className="w-full bg-[#182030] hover:bg-[#222e47] active:bg-[#283756] text-slate-200 font-semibold text-sm py-3 rounded-xl border border-[#26334a] transition text-center cursor-pointer shadow-xs"
                   >
                     Atur Ulang Semua Filter
                   </button>
                 </div>
+
               </div>
             </motion.div>
           )}
         </AnimatePresence>
-
       </div>
 
       {/* FILTER SUMMARY INSIGHT */}
